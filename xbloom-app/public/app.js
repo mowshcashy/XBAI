@@ -106,7 +106,14 @@ function initSettingsPanel() {
 
 // --- helpers ---
 
+// On GitHub Pages without an XBloom login, recipes live in this browser only.
+const useLocalStore = () => IS_STATIC && !window.XBWeb?.loggedIn();
+
 async function api(path, opts = {}) {
+  if (IS_STATIC && window.XBWeb) {
+    const out = await window.XBWeb.route(path, opts);
+    if (out !== null) return out;
+  }
   const resp = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) {
@@ -171,7 +178,7 @@ async function populateHomeGrid() {
   if (!grid) return;
   try {
     let recipes;
-    if (IS_STATIC) {
+    if (useLocalStore()) {
       recipes = JSON.parse(localStorage.getItem("xbloom.recipes") || "[]");
     } else {
       ({ recipes } = await api("/api/recipes").catch(() => ({ recipes: [] })));
@@ -212,7 +219,7 @@ $("#homeRecipeGrid").addEventListener("click", async (e) => {
   if (sendBtn) {
     e.stopPropagation();
     const id = sendBtn.dataset.recipeId;
-    const recipes = IS_STATIC
+    const recipes = useLocalStore()
       ? JSON.parse(localStorage.getItem("xbloom.recipes") || "[]")
       : (await api("/api/recipes").catch(() => ({ recipes: [] }))).recipes;
     const r = recipes.find((x) => String(x.id) === String(id));
@@ -222,7 +229,7 @@ $("#homeRecipeGrid").addEventListener("click", async (e) => {
   const card = e.target.closest("[data-recipe-id]");
   if (card) {
     const id = card.dataset.recipeId;
-    const recipes = IS_STATIC
+    const recipes = useLocalStore()
       ? JSON.parse(localStorage.getItem("xbloom.recipes") || "[]")
       : (await api("/api/recipes").catch(() => ({ recipes: [] }))).recipes;
     const r = recipes.find((x) => String(x.id) === String(id));
@@ -237,6 +244,14 @@ if (window.innerWidth <= 767) {
 
 // --- session ---
 
+function setHomeLogin(loggedIn, email) {
+  const pill = $("#homeLoginBtn");
+  if (!pill) return;
+  pill.dataset.loggedIn = loggedIn ? "1" : "";
+  pill.classList.toggle("on", !!loggedIn);
+  pill.textContent = loggedIn ? `✓ ${email || "متصل بحساب XBloom"}` : "دخول حساب XBloom";
+}
+
 async function refreshSession() {
   try {
     const s = await api("/api/session");
@@ -246,6 +261,7 @@ async function refreshSession() {
       const initial = (s.email || "؟")[0].toUpperCase();
       $("#avatarInitial").textContent = initial;
       if ($("#homeAvatarLetter")) $("#homeAvatarLetter").textContent = initial;
+      setHomeLogin(true, s.email);
       $("#loginBtn").classList.add("hidden");
       $("#logoutBtn").classList.remove("hidden");
     } else {
@@ -253,6 +269,7 @@ async function refreshSession() {
       $("#sessionHint").textContent = "الوضع المحلي";
       $("#avatarInitial").textContent = "?";
       if ($("#homeAvatarLetter")) $("#homeAvatarLetter").textContent = "؟";
+      setHomeLogin(false);
       $("#loginBtn").classList.remove("hidden");
       $("#logoutBtn").classList.add("hidden");
     }
@@ -281,7 +298,8 @@ $("#loginForm").addEventListener("submit", async (e) => {
     $("#loginModal").classList.add("hidden");
     e.target.reset();
     toast("تم تسجيل الدخول");
-    refreshSession();
+    await refreshSession();
+    if ($("#panel-home")?.classList.contains("active")) populateHomeGrid();
   } catch (err) {
     toast(err.message, "bad");
   } finally {
@@ -289,11 +307,21 @@ $("#loginForm").addEventListener("submit", async (e) => {
   }
 });
 
-$("#logoutBtn").addEventListener("click", async () => {
+async function logout() {
   await api("/api/logout", { method: "POST" });
   toast("تم تسجيل الخروج");
-  refreshSession();
+  await refreshSession();
   $("#recipeList").innerHTML = '<div class="empty"><p class="muted">سجّل الدخول لعرض وصفاتك.</p></div>';
+  populateHomeGrid();
+}
+$("#logoutBtn").addEventListener("click", logout);
+
+$("#homeLoginBtn").addEventListener("click", () => {
+  if ($("#homeLoginBtn").dataset.loggedIn === "1") {
+    if (confirm("تسجيل الخروج من حساب XBloom؟")) logout();
+  } else {
+    $("#loginModal").classList.remove("hidden");
+  }
 });
 
 // --- provider switching (Ollama ↔ OpenRouter) ---
@@ -746,62 +774,112 @@ $("#sendModal").addEventListener("click", (e) => {
   if (e.target.id === "sendModal") $("#sendModal").classList.add("hidden");
 });
 
-// ── Brew on machine (BLE via xbloom-ble CLI) ──────────────────────────────
+// ── Brew on machine ─────────────────────────────────────────────────────────
+// Phones/Chrome: Web Bluetooth straight to the machine (xbloom-ble.js).
+// Local server without Web Bluetooth: falls back to the xbloom-ble CLI (/api/brew).
 
-let _brewAbort = null; // holds the SSE EventSource so we can close it
+let _brewAbort = null;   // AbortController (server path) or { cancel } (BLE path)
+let _pendingBrew = null; // recipe waiting for the user to confirm the checklist
 
-async function brewOnMachine(spec) {
+const brewUi = () => ({
+  modal: $("#brewModal"), log: $("#brewLog"), title: $("#brewModalTitle"),
+  subtitle: $("#brewModalSubtitle"), check: $("#brewChecklist"), go: $("#brewModalGo"),
+  closeBtn: $("#brewModalClose"), cancelBtn: $("#brewModalCancel"), icon: $("#brewModalIcon"),
+});
+
+function brewLog(line) {
+  const log = $("#brewLog");
+  log.classList.remove("hidden");
+  log.textContent += line + "\n";
+  log.scrollTop = log.scrollHeight;
+}
+
+function brewFinished(titleText, subtitleText) {
+  const u = brewUi();
+  u.title.textContent = titleText;
+  u.subtitle.textContent = subtitleText || "";
+  u.icon.style.animation = "";
+  u.cancelBtn.classList.add("hidden");
+  u.go.classList.add("hidden");
+  u.closeBtn.classList.remove("hidden");
+  _brewAbort = null;
+}
+
+function brewOnMachine(spec) {
   if (!spec) { toast("لا توجد وصفة", "bad"); return; }
+  if (spec.kind === "tea") { toast("التحضير المباشر متاح للقهوة فقط حالياً", "bad"); return; }
 
-  if (IS_STATIC) {
-    toast("التحضير المباشر يلزم الخادم المحلي (localhost:8789)", "bad");
-    return;
-  }
-
-  // Quick install-check first
-  let installed = false;
-  try {
-    const s = await api("/api/ble/status");
-    installed = s.installed;
-  } catch {}
-
-  if (!installed) {
+  if (!window.XBBle?.supported()) {
+    if (!IS_STATIC) { brewViaServer(spec); return; }
     $("#bleSetupModal").classList.remove("hidden");
     return;
   }
 
-  // Open progress modal
-  const modal    = $("#brewModal");
-  const log      = $("#brewLog");
-  const title    = $("#brewModalTitle");
-  const subtitle = $("#brewModalSubtitle");
-  const closeBtn = $("#brewModalClose");
-  const cancelBtn = $("#brewModalCancel");
-  const icon     = $("#brewModalIcon");
+  _pendingBrew = spec;
+  const u = brewUi();
+  u.log.textContent = "";
+  u.log.classList.add("hidden");
+  u.check.classList.remove("hidden");
+  u.title.textContent = "جاهز للتحضير؟";
+  u.subtitle.textContent = spec.name || "";
+  u.icon.style.animation = "";
+  u.go.classList.remove("hidden");
+  u.go.disabled = false;
+  u.cancelBtn.classList.remove("hidden");
+  u.closeBtn.classList.add("hidden");
+  u.modal.classList.remove("hidden");
+}
 
-  log.textContent = "";
-  title.textContent = "جاري التحضير…";
-  subtitle.textContent = "تواصل مع الجهاز عبر Bluetooth";
-  closeBtn.classList.add("hidden");
-  cancelBtn.classList.remove("hidden");
-  icon.style.animation = "brew-pulse 1.4s ease-in-out infinite";
-  modal.classList.remove("hidden");
+// Runs inside the "اتصل وابدأ" click so Web Bluetooth gets its user gesture.
+$("#brewModalGo").addEventListener("click", () => {
+  const spec = _pendingBrew;
+  if (!spec) return;
+  const u = brewUi();
+  u.check.classList.add("hidden");
+  u.go.disabled = true;
+  u.go.classList.add("hidden");
+  u.title.textContent = "جاري التحضير…";
+  u.subtitle.textContent = "اختر جهاز XBLOOM من القائمة";
+  u.icon.style.animation = "brew-pulse 1.4s ease-in-out infinite";
 
-  const append = (line) => {
-    log.textContent += line + "\n";
-    log.scrollTop = log.scrollHeight;
-  };
+  let job;
+  try {
+    job = window.XBBle.brew(spec, {
+      onStatus: (text) => { u.subtitle.textContent = text; brewLog(`• ${text}`); },
+    });
+  } catch (err) {
+    brewFinished("تعذّر الاتصال", err.message);
+    return;
+  }
+  _brewAbort = job;
+  job.done.then(() => {
+    if (_brewAbort === job) brewFinished("القهوة جاهزة ☕", "بالعافية!");
+  }).catch((err) => {
+    if (_brewAbort !== job) return;
+    const msg = err?.name === "NotFoundError" ? "ما تم اختيار جهاز" : (err?.message || String(err));
+    brewLog(`✗ ${msg}`);
+    brewFinished("ما اكتمل التحضير", msg);
+  });
+});
 
-  const es = new EventSource(`/api/brew?_t=${Date.now()}`, { withCredentials: false });
-  // We POST the body via fetch-then-stream isn't natively supported with EventSource.
-  // So POST the recipe first to get a sessionId, then stream from that.
-  // Simpler: close the EventSource approach and use fetch + ReadableStream instead.
-  es.close();
+async function brewViaServer(spec) {
+  let installed = false;
+  try { installed = (await api("/api/ble/status")).installed; } catch {}
+  if (!installed) { $("#bleSetupModal").classList.remove("hidden"); return; }
 
-  // Use fetch + ReadableStream for SSE (allows POST body)
+  const u = brewUi();
+  u.log.textContent = "";
+  u.check.classList.add("hidden");
+  u.go.classList.add("hidden");
+  u.title.textContent = "جاري التحضير…";
+  u.subtitle.textContent = "تواصل مع الجهاز عبر Bluetooth";
+  u.closeBtn.classList.add("hidden");
+  u.cancelBtn.classList.remove("hidden");
+  u.icon.style.animation = "brew-pulse 1.4s ease-in-out infinite";
+  u.modal.classList.remove("hidden");
+
   const controller = new AbortController();
   _brewAbort = controller;
-
   try {
     const resp = await fetch("/api/brew", {
       method: "POST",
@@ -809,16 +887,10 @@ async function brewOnMachine(spec) {
       body: JSON.stringify(spec),
       signal: controller.signal,
     });
-
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.error || `HTTP ${resp.status}`);
-    }
-
+    if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || `HTTP ${resp.status}`);
     const reader = resp.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
-
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -829,46 +901,26 @@ async function brewOnMachine(spec) {
         if (!line.startsWith("data:")) continue;
         let msg;
         try { msg = JSON.parse(line.slice(5).trim()); } catch { continue; }
-        if (msg.type === "log") {
-          append(msg.line);
-        } else if (msg.type === "done") {
-          title.textContent = "تم التحضير! ☕";
-          subtitle.textContent = "الوصفة جارٍ تنفيذها الآن";
-          icon.style.animation = "";
-          cancelBtn.classList.add("hidden");
-          closeBtn.classList.remove("hidden");
-        } else if (msg.type === "error") {
-          throw new Error(msg.message);
-        }
+        if (msg.type === "log") brewLog(msg.line);
+        else if (msg.type === "done") brewFinished("تم التحضير! ☕", "الوصفة جارٍ تنفيذها الآن");
+        else if (msg.type === "error") throw new Error(msg.message);
       }
     }
   } catch (err) {
-    if (err.name === "AbortError") {
-      title.textContent = "تم الإلغاء";
-      subtitle.textContent = "";
-      icon.style.animation = "";
-    } else {
-      // Check if this is the "not installed" error
-      if ((err.message || "").includes("غير مثبّت") || (err.message || "").includes("xbloom")) {
-        modal.classList.add("hidden");
-        $("#bleSetupModal").classList.remove("hidden");
-        return;
-      }
-      title.textContent = "خطأ في التحضير";
-      subtitle.textContent = err.message || "تأكد من تشغيل الجهاز وإغلاق تطبيق الهاتف";
-      append(`\n❌ ${err.message}`);
-      icon.style.animation = "";
-    }
-    cancelBtn.classList.add("hidden");
-    closeBtn.classList.remove("hidden");
-  } finally {
-    _brewAbort = null;
+    if (err.name === "AbortError") return;
+    brewLog(`✗ ${err.message}`);
+    brewFinished("خطأ في التحضير", err.message || "تأكد من تشغيل الجهاز وإغلاق تطبيق الهاتف");
   }
 }
 
 $("#brewModalCancel").addEventListener("click", () => {
-  if (_brewAbort) { _brewAbort.abort(); _brewAbort = null; }
+  const job = _brewAbort;
+  _brewAbort = null;
+  _pendingBrew = null;
+  if (job?.abort) job.abort();
+  if (job?.cancel) job.cancel();
   $("#brewModal").classList.add("hidden");
+  if (job) toast("تم إلغاء التحضير");
 });
 $("#brewModalClose").addEventListener("click", () => $("#brewModal").classList.add("hidden"));
 $("#brewModal").addEventListener("click", (e) => {
@@ -880,10 +932,6 @@ $("#bleSetupClose").addEventListener("click", () => $("#bleSetupModal").classLis
 
 async function sendToDevice() {
   if (!state.preview) return;
-  if (IS_STATIC) {
-    toast("يلزم الخادم المحلي لإرسال الوصفة للجهاز — شغّل localhost:8787", "bad");
-    return;
-  }
   const btn = $("#sendToDevice");
   btn.disabled = true;
   try {
@@ -910,7 +958,7 @@ async function sendToDevice() {
 }
 
 async function saveRecipe(spec) {
-  if (IS_STATIC) {
+  if (useLocalStore()) {
     const saved = JSON.parse(localStorage.getItem("xbloom.recipes") || "[]");
     const entry = { ...spec, id: `local-${Date.now()}`, cup_type: spec.kind };
     saved.unshift(entry);
@@ -1309,7 +1357,7 @@ async function loadRecipes() {
   box.innerHTML = '<div class="empty"><p class="muted">…</p></div>';
   try {
     let recipes;
-    if (IS_STATIC) {
+    if (useLocalStore()) {
       recipes = JSON.parse(localStorage.getItem("xbloom.recipes") || "[]");
     } else {
       ({ recipes } = await api("/api/recipes"));
@@ -1347,7 +1395,7 @@ $("#recipeList").addEventListener("click", async (e) => {
   if (btn.dataset.act === "del") {
     if (!confirm(`حذف الوصفة "${name}"؟ لا يمكن التراجع.`)) return;
     try {
-      if (IS_STATIC) {
+      if (useLocalStore()) {
         const saved = JSON.parse(localStorage.getItem("xbloom.recipes") || "[]").filter((x) => String(x.id) !== String(id));
         localStorage.setItem("xbloom.recipes", JSON.stringify(saved));
         toast("تم الحذف");
@@ -1360,7 +1408,7 @@ $("#recipeList").addEventListener("click", async (e) => {
     return;
   }
   try {
-    const recipes = IS_STATIC
+    const recipes = useLocalStore()
       ? JSON.parse(localStorage.getItem("xbloom.recipes") || "[]")
       : (await api("/api/recipes")).recipes;
     const r = recipes.find((x) => String(x.id) === String(id));
@@ -1566,13 +1614,7 @@ manual.steps = defaultSteps("coffee");
 syncManual();
 loadSettings();
 initSettingsPanel();
-if (IS_STATIC) {
-  // skip XBloom cloud login in static mode
-  $("#loginBtn")?.classList.add("hidden");
-  $("#sessionHint").textContent = "GitHub Pages — وضع مستقل";
-} else {
-  refreshSession();
-}
+refreshSession();
 loadModels();
 
 // ============================================================
