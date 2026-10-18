@@ -655,6 +655,43 @@ $("#saveAssisted").addEventListener("click", async () => {
   if (ok) showPanel("recipes");
 });
 
+$("#sendToDevice").addEventListener("click", sendToDevice);
+$("#sendModalClose").addEventListener("click", () => $("#sendModal").classList.add("hidden"));
+$("#sendModal").addEventListener("click", (e) => {
+  if (e.target.id === "sendModal") $("#sendModal").classList.add("hidden");
+});
+
+async function sendToDevice() {
+  if (!state.preview) return;
+  if (IS_STATIC) {
+    toast("يلزم الخادم المحلي لإرسال الوصفة للجهاز — شغّل localhost:8787", "bad");
+    return;
+  }
+  const btn = $("#sendToDevice");
+  btn.disabled = true;
+  try {
+    const result = await api("/api/recipes", { method: "POST", body: JSON.stringify(state.preview) });
+    const link = result.share_link || null;
+    const linkEl = $("#sendShareLink");
+    if (link) {
+      linkEl.href = link;
+      linkEl.classList.remove("hidden");
+    } else {
+      linkEl.classList.add("hidden");
+    }
+    $("#sendModal").classList.remove("hidden");
+  } catch (err) {
+    if (err.status === 401 || (err.message || "").toLowerCase().includes("not logged in")) {
+      toast("يجب تسجيل الدخول أولاً — استخدم زر «دخول XBloom»", "bad");
+      $("#loginModal")?.classList.remove("hidden");
+    } else {
+      toast(err.message || "تعذّر الإرسال للجهاز", "bad");
+    }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function saveRecipe(spec) {
   if (IS_STATIC) {
     const saved = JSON.parse(localStorage.getItem("xbloom.recipes") || "[]");

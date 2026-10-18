@@ -589,3 +589,11 @@ textarea{resize:vertical;font-family:inherit}
   background:rgba(200,60,60,.1);border:1px solid rgba(200,60,60,.35);
   border-radius:var(--radius-sm);padding:.65rem .85rem;font-size:.85rem;color:#e07070;
 }
+.btn-send-device{border:1px solid var(--accent);color:var(--accent)}
+.btn-send-device:hover{background:var(--accent-faint)}
+
+/* ── Send-to-device modal ─────────────────────── */
+.send-modal-body{display:flex;flex-direction:column;align-items:center;gap:1rem;padding:.5rem 0 .2rem}
+.send-success-icon{width:56px;height:56px;border-radius:50%;background:var(--accent-faint);display:grid;place-items:center}
+.send-success-icon svg{width:30px;height:30px;color:var(--accent)}
+.send-instructions{text-align:center;line-height:1.7;color:var(--text-2);font-size:.9rem;margin:0}
