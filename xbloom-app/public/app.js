@@ -109,7 +109,11 @@ function initSettingsPanel() {
 async function api(path, opts = {}) {
   const resp = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+  if (!resp.ok) {
+    const err = new Error(data.error || `HTTP ${resp.status}`);
+    err.status = resp.status;
+    throw err;
+  }
   return data;
 }
 
@@ -467,7 +471,7 @@ $("#aiBrewBtn").addEventListener("click", async () => {
           let ev;
           try { ev = JSON.parse(line); } catch { continue; }
           if (ev.type === "token") fullText += ev.data;
-          else if (ev.type === "recipe") gotRecipe = ev.recipe;
+          else if (ev.type === "recipe") gotRecipe = normalizeRecipe(ev.recipe);
           else if (ev.type === "error") gotError = ev.error;
         }
       }
@@ -495,7 +499,7 @@ $("#aiBrewBtn").addEventListener("click", async () => {
     state.history.push({ role: "assistant", content: fullText });
     if ($("#resultName")) $("#resultName").textContent = gotRecipe.name || "وصفة جديدة";
     if ($("#resultNotes")) $("#resultNotes").textContent = gotRecipe.notes || "";
-    showRecipePreview(gotRecipe);
+    renderPreview(gotRecipe);
     $("#previewBadge").classList.remove("hidden");
     $("#previewActions").classList.add("hidden"); // actions are in result-acts now
   } else {
@@ -657,15 +661,20 @@ async function saveRecipe(spec) {
     const entry = { ...spec, id: `local-${Date.now()}`, cup_type: spec.kind };
     saved.unshift(entry);
     localStorage.setItem("xbloom.recipes", JSON.stringify(saved));
-    toast(`تم حفظ الوصفة (محلي)`);
+    toast(`تم حفظ الوصفة محلياً`);
     return true;
   }
   try {
     const out = await api("/api/recipes", { method: "POST", body: JSON.stringify(spec) });
-    toast(`تم حفظ الوصفة (${out.id})`);
+    toast(`تم حفظ الوصفة ✓`);
     return true;
   } catch (err) {
-    toast(err.message, "bad");
+    if (err.status === 401 || (err.message || "").toLowerCase().includes("not logged in")) {
+      toast("يجب تسجيل الدخول أولاً — استخدم زر «دخول XBloom»", "bad");
+      $("#loginModal")?.classList.remove("hidden");
+    } else {
+      toast(err.message || "تعذّر الحفظ", "bad");
+    }
     return false;
   }
 }
@@ -1446,13 +1455,51 @@ function buildUserContent(text, image) {
   ];
 }
 
+function normalizeRecipe(r) {
+  if (!r) return r;
+  const out = { ...r };
+  // normalize top-level numeric fields
+  out.dose_g = Number(out.dose_g || out.dose || 15);
+  out.ratio  = Number(out.ratio || out.water_ratio || 15);
+  out.grind_size = Number(out.grind_size ?? out.grind ?? 70);
+  out.grind_rpm  = Number(out.grind_rpm  ?? out.rpm   ?? 80);
+  out.color = out.color || (out.kind === "tea" ? "#A8C686" : "#B9C4D8");
+  const totalWater = out.dose_g * out.ratio;
+
+  if (out.kind === "tea") {
+    const raw = out.steeps || out.steps || out.pours || [];
+    out.steeps = raw.map((s) => ({
+      volume_ml:      Number(s.volume_ml ?? s.water_ml ?? s.water ?? s.volume ?? Math.round(totalWater / raw.length)),
+      temperature_c:  Number(s.temperature_c ?? s.temperature ?? s.temp ?? 85),
+      steep_seconds:  Number(s.steep_seconds ?? s.steep ?? s.time ?? s.duration ?? 60),
+    }));
+    delete out.pours;
+  } else {
+    const raw = out.pours || out.steps || out.pouring_steps || [];
+    // if AIs omit per-pour volumes, distribute total water
+    const hasVols = raw.some((s) => s.volume_ml ?? s.water ?? s.water_ml ?? s.volume);
+    out.pours = raw.map((s, i) => {
+      const vol = Number(s.volume_ml ?? s.water_ml ?? s.water ?? s.volume ??
+        (i === 0 ? Math.round(out.dose_g * 2.5) : Math.round((totalWater - out.dose_g * 2.5) / Math.max(raw.length - 1, 1))));
+      return {
+        name:           s.name || s.step_name || (i === 0 ? "Bloom" : `Pour ${i + 1}`),
+        volume_ml:      Math.max(vol, 5),
+        temperature_c:  Number(s.temperature_c ?? s.temperature ?? s.temp ?? s.temp_c ?? 93),
+        pause_seconds:  Number(s.pause_seconds ?? s.pause ?? s.rest ?? s.wait ?? (i === 0 ? 45 : 0)),
+        pattern:        s.pattern || "circular",
+      };
+    });
+    delete out.steeps;
+  }
+  return out;
+}
+
 function extractRecipeJson(raw) {
-  // Try to find a JSON object in the response
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) return null;
   try {
     const obj = JSON.parse(match[0]);
-    if (obj.kind && obj.dose_g && obj.ratio) return obj;
+    if (obj.kind && (obj.dose_g || obj.dose) && (obj.ratio || obj.water_ratio)) return normalizeRecipe(obj);
   } catch { /* bad json */ }
   return null;
 }
