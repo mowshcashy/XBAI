@@ -1,0 +1,6 @@
+-- Baseline placeholder for the schema that was created on the remote project before
+-- this repo tracked migrations (remote migration version 20260404132043, which
+-- originally created the user_sessions table). This version is already recorded in the
+-- remote migration history, so `supabase db push` SKIPS it and applies only the newer
+-- migrations. The file exists solely to align local and remote migration history so
+-- the later migrations can be pushed. It intentionally contains no statements.

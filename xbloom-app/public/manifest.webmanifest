@@ -1,0 +1,16 @@
+{
+  "name": "XBloom Studio",
+  "short_name": "XBloom",
+  "description": "Build coffee and tea recipes for your XBloom machine — manually, with local AI, or from a photo.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

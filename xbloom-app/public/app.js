@@ -1,0 +1,1372 @@
+// XBloom dashboard front-end. Vanilla JS, no build step.
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
+
+const PATTERN_LABELS = { circular: "دائري", centered: "مركزي", spiral: "حلزوني" };
+const ROAST_LABELS = { light: "فاتح", medium: "متوسط", dark: "غامق" };
+const PROCESS_LABELS = { washed: "مغسول", natural: "طبيعي", honey: "عسل", anaerobic: "لاهوائي", steamed: "مبخّر", partially_oxidized: "أكسدة جزئية" };
+let state = { preview: null, history: [], provider: "ollama" };
+
+// ============================================================
+// STATIC MODE — detect if running on GitHub Pages / remote host
+// ============================================================
+const IS_STATIC = !["localhost", "127.0.0.1", ""].includes(location.hostname) && !location.hostname.endsWith(".local");
+
+// ============================================================
+// SETTINGS — loaded from localStorage, applied on boot
+// ============================================================
+const settings = {
+  name: "",
+  orKey: "",
+  ollamaUrl: "http://localhost:11434",
+  accent: "#9ab5d9",
+};
+
+function loadSettings() {
+  settings.name = localStorage.getItem("xbloom.s.name") || "";
+  settings.orKey = localStorage.getItem("xbloom.s.orKey") || "";
+  settings.ollamaUrl = localStorage.getItem("xbloom.s.ollamaUrl") || "http://localhost:11434";
+  settings.accent = localStorage.getItem("xbloom.s.accent") || "#9ab5d9";
+  applyAccent(settings.accent);
+  updateSidebarProfile();
+  if (IS_STATIC) $("#staticNote")?.classList.remove("hidden");
+}
+
+function applyAccent(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) || 154;
+  const g = parseInt(hex.slice(3, 5), 16) || 181;
+  const b = parseInt(hex.slice(5, 7), 16) || 217;
+  document.documentElement.style.setProperty("--accent", hex);
+  document.documentElement.style.setProperty("--accent-faint", `rgba(${r},${g},${b},0.14)`);
+}
+
+function updateSidebarProfile() {
+  if (settings.name) {
+    const lbl = $("#sessionLabel");
+    const av = $("#avatarInitial");
+    if (lbl && !$("#logoutBtn")?.classList.contains("hidden") === false) {
+      // only override when not logged into XBloom cloud
+    }
+    if (av && av.textContent === "?") {
+      av.textContent = settings.name[0].toUpperCase();
+    }
+  }
+}
+
+// Settings panel UI
+function initSettingsPanel() {
+  const nameEl = $("#settingName");
+  const orKeyEl = $("#settingOrKey");
+  const ollamaEl = $("#settingOllamaUrl");
+  const accentEl = $("#settingAccent");
+  if (!nameEl) return;
+
+  // populate inputs from settings
+  nameEl.value = settings.name;
+  orKeyEl.value = settings.orKey;
+  ollamaEl.value = settings.ollamaUrl;
+  accentEl.value = settings.accent;
+
+  // color swatches
+  $$(".color-swatch").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.accent === settings.accent);
+    btn.addEventListener("click", () => {
+      accentEl.value = btn.dataset.accent;
+      applyAccent(btn.dataset.accent);
+      $$(".color-swatch").forEach((b) => b.classList.toggle("active", b.dataset.accent === btn.dataset.accent));
+    });
+  });
+
+  // live preview while dragging color picker
+  accentEl.addEventListener("input", () => {
+    applyAccent(accentEl.value);
+    $$(".color-swatch").forEach((b) => b.classList.remove("active"));
+  });
+
+  // go-to-settings from OR banner
+  $("#orKeyGoSettings")?.addEventListener("click", () => showPanel("settings"));
+
+  // save
+  $("#saveSettingsBtn").addEventListener("click", () => {
+    settings.name = nameEl.value.trim();
+    settings.orKey = orKeyEl.value.trim();
+    settings.ollamaUrl = ollamaEl.value.trim() || "http://localhost:11434";
+    settings.accent = accentEl.value;
+    localStorage.setItem("xbloom.s.name", settings.name);
+    localStorage.setItem("xbloom.s.orKey", settings.orKey);
+    localStorage.setItem("xbloom.s.ollamaUrl", settings.ollamaUrl);
+    localStorage.setItem("xbloom.s.accent", settings.accent);
+    applyAccent(settings.accent);
+    updateSidebarProfile();
+    toast("تم حفظ الإعدادات ✓");
+    // refresh models if provider is active
+    loadModels();
+  });
+}
+
+// --- helpers ---
+
+async function api(path, opts = {}) {
+  const resp = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+  return data;
+}
+
+let toastTimer;
+function toast(msg, kind = "ok") {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.className = `toast ${kind}`;
+  el.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add("hidden"), 3800);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+function clampN(v, lo, hi) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return lo;
+  return Math.min(hi, Math.max(lo, n));
+}
+
+// --- panels ---
+
+function showPanel(name) {
+  document.querySelectorAll(".panel").forEach((p) => {
+    const on = p.id === `panel-${name}`;
+    p.classList.toggle("active", on);
+    p.style.display = on ? "" : "none";
+  });
+  document.querySelectorAll(".mod-card").forEach((t) => t.classList.toggle("active", t.dataset.goto === name));
+  if (name === "recipes") loadRecipes();
+  if (name === "community") loadCommunity();
+}
+document.querySelectorAll(".mod-card").forEach((t) =>
+  t.addEventListener("click", () => showPanel(t.dataset.goto))
+);
+
+// --- session ---
+
+async function refreshSession() {
+  try {
+    const s = await api("/api/session");
+    if (s.loggedIn) {
+      $("#sessionLabel").textContent = s.email || "مسجل";
+      $("#sessionHint").textContent = "متصل بالسحابة";
+      $("#avatarInitial").textContent = (s.email || "؟")[0].toUpperCase();
+      $("#loginBtn").classList.add("hidden");
+      $("#logoutBtn").classList.remove("hidden");
+    } else {
+      $("#sessionLabel").textContent = "غير مسجل";
+      $("#sessionHint").textContent = "الوضع المحلي";
+      $("#avatarInitial").textContent = "?";
+      $("#loginBtn").classList.remove("hidden");
+      $("#logoutBtn").classList.add("hidden");
+    }
+  } catch {
+    $("#sessionLabel").textContent = "تعذّر الاتصال";
+    $("#sessionHint").textContent = "السيرفر غير متاح";
+  }
+}
+
+$("#loginBtn").addEventListener("click", () => $("#loginModal").classList.remove("hidden"));
+$("#loginCancel").addEventListener("click", () => $("#loginModal").classList.add("hidden"));
+$("#loginModal").addEventListener("click", (e) => {
+  if (e.target.id === "loginModal") $("#loginModal").classList.add("hidden");
+});
+
+$("#loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const btn = e.target.querySelector(".btn-accent");
+  btn.disabled = true;
+  try {
+    await api("/api/login", {
+      method: "POST",
+      body: JSON.stringify({ email: fd.get("email"), password: fd.get("password") }),
+    });
+    $("#loginModal").classList.add("hidden");
+    e.target.reset();
+    toast("تم تسجيل الدخول");
+    refreshSession();
+  } catch (err) {
+    toast(err.message, "bad");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("#logoutBtn").addEventListener("click", async () => {
+  await api("/api/logout", { method: "POST" });
+  toast("تم تسجيل الخروج");
+  refreshSession();
+  $("#recipeList").innerHTML = '<div class="empty"><p class="muted">سجّل الدخول لعرض وصفاتك.</p></div>';
+});
+
+// --- provider switching (Ollama ↔ OpenRouter) ---
+
+$$("[data-provider]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    state.provider = btn.dataset.provider;
+    $$("[data-provider]").forEach((b) => b.classList.toggle("active", b.dataset.provider === state.provider));
+    localStorage.setItem("xbloom.provider", state.provider);
+    const isOR = state.provider === "openrouter";
+    $("#assistHint").textContent = isOR
+      ? "OpenRouter — سحابة، يدعم صور وموديلات متعددة"
+      : "Ollama — محلي، بدون إنترنت";
+    loadModels();
+  });
+});
+
+// --- models ---
+
+const OR_DEFAULT_MODELS = [
+  { id: "openai/gpt-4o-mini", name: "GPT-4o mini", provider: "OpenAI", vision: true },
+  { id: "openai/gpt-4o", name: "GPT-4o", provider: "OpenAI", vision: true },
+  { id: "anthropic/claude-3.5-haiku", name: "Claude 3.5 Haiku", provider: "Anthropic", vision: true },
+  { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet", provider: "Anthropic", vision: true },
+  { id: "google/gemini-flash-1.5", name: "Gemini Flash 1.5", provider: "Google", vision: true },
+  { id: "google/gemini-pro-1.5", name: "Gemini Pro 1.5", provider: "Google", vision: true },
+  { id: "mistralai/mistral-small-3.2-24b-instruct:free", name: "Mistral Small (مجاني)", provider: "Mistral", vision: false },
+  { id: "meta-llama/llama-3.1-8b-instruct:free", name: "Llama 3.1 8B (مجاني)", provider: "Meta", vision: false },
+  { id: "qwen/qwen-2.5-72b-instruct", name: "Qwen 2.5 72B", provider: "Alibaba", vision: false },
+  { id: "deepseek/deepseek-r1:free", name: "DeepSeek R1 (مجاني)", provider: "DeepSeek", vision: false },
+];
+
+function populateModelSelect(models, savedKey) {
+  const sel = $("#modelSelect");
+  const saved = localStorage.getItem(savedKey);
+  const groups = {};
+  models.forEach((m) => { (groups[m.provider || "أخرى"] ??= []).push(m); });
+  sel.innerHTML = Object.entries(groups)
+    .map(([g, ms]) =>
+      `<optgroup label="${g}">${ms.map((m) => `<option value="${m.id}">${m.name}${m.vision ? " 👁" : ""}</option>`).join("")}</optgroup>`
+    ).join("");
+  if (saved) sel.value = saved;
+  sel.onchange = () => localStorage.setItem(savedKey, sel.value);
+}
+
+async function loadModels() {
+  const sel = $("#modelSelect");
+  sel.innerHTML = "<option>…</option>";
+  sel.disabled = true;
+  $("#orKeyBanner").classList.add("hidden");
+
+  const isOR = state.provider === "openrouter";
+  const savedKey = `xbloom.model.${state.provider}`;
+
+  try {
+    if (isOR) {
+      const key = IS_STATIC ? settings.orKey : null; // static = use settings key; local = server checks .env
+      if (IS_STATIC) {
+        // direct browser → OpenRouter
+        if (!settings.orKey) {
+          $("#orKeyBanner").classList.remove("hidden");
+          sel.innerHTML = '<option value="">أضف مفتاح OpenRouter في الإعدادات</option>';
+          return;
+        }
+        try {
+          const resp = await fetch("https://openrouter.ai/api/v1/models", {
+            headers: { Authorization: `Bearer ${settings.orKey}` },
+          });
+          const data = await resp.json();
+          const models = (data.data || []).filter((m) => m.id && m.name).slice(0, 120).map((m) => ({
+            id: m.id,
+            name: m.name,
+            provider: (m.id.split("/")[0] || "").replace(/-/g, " "),
+            vision: !!(m.architecture?.modality?.includes("image")),
+          }));
+          populateModelSelect(models.length ? models : OR_DEFAULT_MODELS, savedKey);
+        } catch {
+          populateModelSelect(OR_DEFAULT_MODELS, savedKey);
+        }
+      } else {
+        // via local server
+        const { models, hasKey } = await api("/api/openrouter/models");
+        if (!hasKey) {
+          $("#orKeyBanner").classList.remove("hidden");
+          sel.innerHTML = '<option value="">أضف مفتاح في الإعدادات أو .env</option>';
+          return;
+        }
+        if (!models.length) { sel.innerHTML = '<option value="">لا توجد موديلات</option>'; return; }
+        populateModelSelect(models, savedKey);
+      }
+    } else {
+      if (IS_STATIC) {
+        // direct browser → Ollama (may fail if CORS not enabled)
+        try {
+          const resp = await fetch(`${settings.ollamaUrl}/api/tags`);
+          const data = await resp.json();
+          const models = (data.models || []).map((m) => m.name);
+          if (!models.length) { sel.innerHTML = '<option value="">لا توجد موديلات في Ollama</option>'; return; }
+          const saved = localStorage.getItem(savedKey);
+          sel.innerHTML = models.map((m) => `<option value="${m}">${m}</option>`).join("");
+          if (saved && models.includes(saved)) sel.value = saved;
+          sel.onchange = () => localStorage.setItem(savedKey, sel.value);
+        } catch {
+          sel.innerHTML = '<option value="">Ollama غير متاح — تحقق من الرابط في الإعدادات وفعّل CORS</option>';
+        }
+      } else {
+        const { models } = await api("/api/ollama/models");
+        if (!models.length) { sel.innerHTML = '<option value="">لا توجد موديلات</option>'; return; }
+        const saved = localStorage.getItem(savedKey);
+        sel.innerHTML = models.map((m) => `<option value="${m}">${m}</option>`).join("");
+        if (saved && models.includes(saved)) sel.value = saved;
+        sel.onchange = () => localStorage.setItem(savedKey, sel.value);
+      }
+    }
+  } catch (e) {
+    sel.innerHTML = `<option value="">${isOR ? "OpenRouter" : "Ollama"} غير متاح</option>`;
+  } finally {
+    sel.disabled = false;
+  }
+}
+$("#refreshModels").addEventListener("click", loadModels);
+// --- image attach (coffee bag photo) ---
+let attachedImage = null;
+
+function clearAttachment() {
+  attachedImage = null;
+  $("#attachPreview").classList.add("hidden");
+}
+
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+}
+
+// Keep the payload small: cap the long edge at 1280px and re-encode as JPEG.
+function downscaleImage(dataUrl, max = 1280) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, max / Math.max(img.width, img.height));
+      if (scale >= 1) return resolve(dataUrl);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+$("#attachBtn").addEventListener("click", () => $("#attachFile").click());
+$("#attachFile").addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  if (!file.type.startsWith("image/")) return toast("اختر صورة", "bad");
+  try {
+    const raw = await fileToDataURL(file);
+    attachedImage = await downscaleImage(raw);
+    $("#attachThumb").src = attachedImage;
+    $("#attachPreview").classList.remove("hidden");
+    $("#chatText").focus();
+  } catch {
+    toast("تعذّر قراءة الصورة", "bad");
+  }
+});
+$("#attachRemove").addEventListener("click", clearAttachment);
+
+// --- assistant (streaming) ---
+
+function renderMsgContent(text) {
+  return text.split("\n").map((l) => `<p>${escapeHtml(l) || "&nbsp;"}</p>`).join("");
+}
+
+function addMsg(role, text) {
+  const div = document.createElement("div");
+  div.className = `msg ${role}`;
+  if (role === "assistant") {
+    div.innerHTML = `<button class="msg-copy" title="نسخ" type="button">📋</button>${renderMsgContent(text)}`;
+    div.querySelector(".msg-copy").addEventListener("click", () => {
+      navigator.clipboard?.writeText(div.innerText.replace(/^📋\s*/, "").trim());
+      toast("تم النسخ");
+    });
+  } else {
+    div.innerHTML = renderMsgContent(text);
+  }
+  $("#chatLog").appendChild(div);
+  $("#chatLog").scrollTop = $("#chatLog").scrollHeight;
+  return div;
+}
+
+function addTypingMsg() {
+  const div = document.createElement("div");
+  div.className = "msg assistant";
+  div.innerHTML = `<button class="msg-copy" style="display:none" type="button">📋</button><p><span class="typing-dots"><span></span><span></span><span></span></span></p>`;
+  $("#chatLog").appendChild(div);
+  $("#chatLog").scrollTop = $("#chatLog").scrollHeight;
+  return div;
+}
+
+function setMsgText(el, text) {
+  const copyBtn = el.querySelector(".msg-copy");
+  el.innerHTML = `${copyBtn ? copyBtn.outerHTML : ""}${renderMsgContent(text)}`;
+  if (el.classList.contains("assistant")) {
+    const newCopy = el.querySelector(".msg-copy");
+    if (newCopy) {
+      newCopy.style.display = "";
+      newCopy.addEventListener("click", () => {
+        navigator.clipboard?.writeText(el.innerText.replace(/^📋\s*/, "").trim());
+        toast("تم النسخ");
+      });
+    }
+  }
+  $("#chatLog").scrollTop = $("#chatLog").scrollHeight;
+}
+
+$("#chatForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = $("#chatText").value.trim();
+  const image = attachedImage;
+  if (!text && !image) return;
+  addMsg("user", text || "(صورة مرفقة 📷)");
+  state.history.push({ role: "user", content: text || "(attached a photo of the coffee bag)" });
+  $("#chatText").value = "";
+  clearAttachment();
+  $("#sendBtn").disabled = true;
+
+  const live = addTypingMsg();
+  const timerEl = document.createElement("span");
+  timerEl.className = "timer";
+  const started = Date.now();
+  const tick = setInterval(() => { timerEl.textContent = ` ${Math.round((Date.now() - started) / 1000)}ث`; }, 1000);
+
+  let liveText = "", gotRecipe = null, gotError = null;
+  try {
+    if (IS_STATIC) {
+      await runAssistStatic(text, image, live, timerEl, (t) => { liveText += t; setMsgText(live, liveText || "…"); live.querySelector("p:last-child")?.appendChild(timerEl); },
+        (r) => { gotRecipe = r; }, (e) => { gotError = e; });
+    } else {
+      const resp = await fetch("/api/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          model: $("#modelSelect").value || undefined,
+          provider: state.provider,
+          history: state.history.slice(0, -1).slice(-4),
+          image: image || undefined,
+        }),
+      });
+      if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let ev;
+          try { ev = JSON.parse(line); } catch { continue; }
+          if (ev.type === "token") {
+            liveText += ev.data;
+            setMsgText(live, liveText || "…");
+            live.querySelector("p:last-child")?.appendChild(timerEl);
+          } else if (ev.type === "recipe") gotRecipe = ev.recipe;
+          else if (ev.type === "error") gotError = ev.error;
+        }
+      }
+    }
+  } catch (err) {
+    gotError = gotError || String(err.message || err);
+  } finally {
+    clearInterval(tick);
+    $("#sendBtn").disabled = false;
+  }
+
+  if (gotError) { live.classList.add("err"); setMsgText(live, `تعذّر التوليد: ${gotError}`); return; }
+  if (gotRecipe) {
+    state.preview = gotRecipe;
+    state.history.push({ role: "assistant", content: gotRecipe.notes || "" });
+    setMsgText(live, gotRecipe.notes || "تفضل، هذه الوصفة.");
+    renderPreview(gotRecipe);
+    toast("تم توليد الوصفة");
+  } else {
+    setMsgText(live, liveText || "لم يرجع الموديل وصفة.");
+  }
+});
+
+// --- recipe preview ---
+
+function recipeStats(r) {
+  const water = (Number(r.dose_g) || 0) * (Number(r.ratio) || 0);
+  const isTea = r.kind === "tea";
+  const stats = [["الجرعة", `${r.dose_g} g`], ["الماء", `${Math.round(water)} ml`]];
+  if (!isTea) { stats.push(["الطحن", r.grind_size ?? "—"]); stats.push(["RPM", r.grind_rpm ?? "—"]); }
+  stats.push(["الخطوات", (r.pours || r.steeps || []).length]);
+  return stats;
+}
+
+function renderPreview(r) {
+  $("#previewBadge").classList.remove("hidden");
+  const isTea = r.kind === "tea";
+  const steps = isTea ? r.steeps || [] : r.pours || [];
+  const color = r.color || (isTea ? "#A8C686" : "#B9C4D8");
+  const totalWater = (Number(r.dose_g) || 0) * (Number(r.ratio) || 0);
+  const sum = steps.reduce((a, s) => a + (Number(s.volume_ml) || 0), 0);
+  const drift = totalWater ? Math.round((Math.abs(sum - totalWater) / totalWater) * 100) : 0;
+  $("#previewBody").innerHTML = `
+    <div class="recipe-title">
+      <span class="swatch" style="background:${escapeHtml(color)}"></span>
+      <h2>${escapeHtml(r.name || "بدون اسم")}</h2>
+      <span class="muted small">${isTea ? "شاي" : "قهوة"}</span>
+    </div>
+    ${r.notes ? `<p class="muted small">${escapeHtml(r.notes)}</p>` : ""}
+    <div class="stat-grid">
+      ${recipeStats(r).map(([k, v]) => `<div class="stat"><b>${escapeHtml(v)}</b><span>${escapeHtml(k)}</span></div>`).join("")}
+    </div>
+    <div class="muted small" style="margin-bottom:.6rem">
+      مجموع الماء المُدخل: ${sum} ml ${drift > 3 ? `<span class="bad">(فرق ${drift}%)</span>` : '<span class="ok">✓ مطابق</span>'}
+    </div>
+    <div class="steps">
+      ${steps.map((s, i) => `
+        <div class="step">
+          <div class="step-head"><b>${isTea ? `النقع ${i + 1}` : escapeHtml(s.name || (i === 0 ? "Bloom" : `Pour ${i + 1}`))}</b></div>
+          <div class="step-ctrls">
+            <div class="mini-stepper"><span>ماء</span><b>${s.volume_ml ?? "—"}</b></div>
+            <div class="mini-stepper"><span>حرارة</span><b>${s.temperature_c ?? "—"}°</b></div>
+            ${isTea
+              ? `<div class="mini-stepper"><span>نقع</span><b>${s.steep_seconds ?? "—"}ث</b></div>`
+              : `<div class="mini-stepper"><span>نمط</span><b>${escapeHtml(PATTERN_LABELS[s.pattern] || s.pattern || "circular")}</b></div>
+                 <div class="mini-stepper"><span>توقف</span><b>${s.pause_seconds ?? 0}ث</b></div>`}
+          </div>
+        </div>`).join("")}
+    </div>`;
+  $("#previewActions").classList.remove("hidden");
+}
+
+$("#sendToManual").addEventListener("click", () => {
+  if (!state.preview) return;
+  fillManualForm(state.preview);
+  showPanel("manual");
+});
+
+$("#saveAssisted").addEventListener("click", async () => {
+  if (!state.preview) return;
+  const ok = await saveRecipe(state.preview);
+  if (ok) showPanel("recipes");
+});
+
+async function saveRecipe(spec) {
+  if (IS_STATIC) {
+    const saved = JSON.parse(localStorage.getItem("xbloom.recipes") || "[]");
+    const entry = { ...spec, id: `local-${Date.now()}`, cup_type: spec.kind };
+    saved.unshift(entry);
+    localStorage.setItem("xbloom.recipes", JSON.stringify(saved));
+    toast(`تم حفظ الوصفة (محلي)`);
+    return true;
+  }
+  try {
+    const out = await api("/api/recipes", { method: "POST", body: JSON.stringify(spec) });
+    toast(`تم حفظ الوصفة (${out.id})`);
+    return true;
+  } catch (err) {
+    toast(err.message, "bad");
+    return false;
+  }
+}
+
+// ============================================================
+// MANUAL — touch-first, state-driven (no keyboard required)
+// ============================================================
+
+const manual = {
+  editingId: null,   // cloud recipe id when editing an existing recipe
+  kind: "coffee",
+  name: "",
+  color: "#B9C4D8",
+  dose_g: 15,
+  ratio: 16,
+  grind_size: 70,
+  grind_rpm: 80,
+  steps: [],
+};
+
+const LIMITS = {
+  coffee: { dose: [1, 31], ratio: [8, 20], grind: [40, 120], rpm: [60, 120], vol: [1, 400], temp: [40, 95], pause: [0, 255] },
+  tea:    { dose: [1, 10], ratio: [1, 99], vol: [1, 90], temp: [65, 100], pause: [0, 360] },
+};
+
+function autoName() {
+  const n = manual.steps.length;
+  if (manual.kind === "tea") return `شاي ${manual.dose_g}g · ${n} نقعة`;
+  return `قهوة ${manual.dose_g}g · 1:${manual.ratio} · ${n} صبات`;
+}
+
+function defaultSteps(kind) {
+  if (kind === "tea") return [{ volume_ml: 80, temperature_c: 85, steep_seconds: 120 }];
+  return [
+    { volume_ml: 45, temperature_c: 93, pattern: "circular", pause_seconds: 45, agitate_before: false, agitate_after: false },
+    { volume_ml: 105, temperature_c: 93, pattern: "circular", pause_seconds: 0, agitate_before: false, agitate_after: false },
+    { volume_ml: 90, temperature_c: 93, pattern: "circular", pause_seconds: 0, agitate_before: false, agitate_after: false },
+  ];
+}
+
+function setKindFlags() {
+  const tea = manual.kind === "tea";
+  $$(".seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.kind === manual.kind));
+  $$("[data-coffee-only]").forEach((el) => el.classList.toggle("hidden", tea));
+  $$("[data-tea-only]").forEach((el) => el.classList.toggle("hidden", !tea));
+  $("#stepsTitle").innerHTML = (tea ? "النقعات" : "الصبات") + ` <span class="steps-count" id="stepsCount">${manual.steps.length}</span>`;
+}
+
+function renderSteps() {
+  const tea = manual.kind === "tea";
+  $("#steps").innerHTML = manual.steps.map((s, i) => {
+    const head = tea ? `النقع ${i + 1}` : (i === 0 ? "Bloom" : `Pour ${i + 1}`);
+    if (tea) {
+      return `
+      <div class="step">
+        <div class="step-head"><b>${head}</b><button class="remove" data-act="remove" data-i="${i}" title="حذف" type="button">✕</button></div>
+        <div class="step-ctrls">
+          <div class="mini-stepper"><span>ماء</span>
+            <button data-act="adj" data-i="${i}" data-k="vol" data-d="-5" type="button">−</button>
+            <b>${s.volume_ml}</b>
+            <button data-act="adj" data-i="${i}" data-k="vol" data-d="5" type="button">+</button>
+          </div>
+          <div class="mini-stepper"><span>حرارة</span>
+            <button data-act="adj" data-i="${i}" data-k="temp" data-d="-1" type="button">−</button>
+            <b>${s.temperature_c}°</b>
+            <button data-act="adj" data-i="${i}" data-k="temp" data-d="1" type="button">+</button>
+          </div>
+          <div class="mini-stepper"><span>المدة</span>
+            <button data-act="adj" data-i="${i}" data-k="pause" data-d="-15" type="button">−</button>
+            <b>${s.steep_seconds}ث</b>
+            <button data-act="adj" data-i="${i}" data-k="pause" data-d="15" type="button">+</button>
+          </div>
+        </div>
+        <div class="chips">
+          ${[30, 60, 90, 120, 180].map((v) => `<button class="chip ${s.steep_seconds === v ? "active" : ""}" data-act="set" data-i="${i}" data-k="steep" data-v="${v}" type="button">${v}ث</button>`).join("")}
+        </div>
+      </div>`;
+    }
+    return `
+    <div class="step">
+      <div class="step-head"><b>${head}</b><button class="remove" data-act="remove" data-i="${i}" title="حذف" type="button">✕</button></div>
+      <div class="step-ctrls">
+        <div class="mini-stepper"><span>ماء</span>
+          <button data-act="adj" data-i="${i}" data-k="vol" data-d="-5" type="button">−</button>
+          <b>${s.volume_ml}</b>
+          <button data-act="adj" data-i="${i}" data-k="vol" data-d="5" type="button">+</button>
+        </div>
+        <div class="mini-stepper"><span>حرارة</span>
+          <button data-act="adj" data-i="${i}" data-k="temp" data-d="-1" type="button">−</button>
+          <b>${s.temperature_c}°</b>
+          <button data-act="adj" data-i="${i}" data-k="temp" data-d="1" type="button">+</button>
+        </div>
+        <div class="mini-stepper"><span>توقف</span>
+          <button data-act="adj" data-i="${i}" data-k="pause" data-d="-5" type="button">−</button>
+          <b>${s.pause_seconds}ث</b>
+          <button data-act="adj" data-i="${i}" data-k="pause" data-d="5" type="button">+</button>
+        </div>
+      </div>
+      <div class="chips">
+        ${["circular", "centered", "spiral"].map((p) =>
+          `<button class="chip ${s.pattern === p ? "active" : ""}" data-act="set" data-i="${i}" data-k="pattern" data-v="${p}" type="button">${PATTERN_LABELS[p]}</button>`).join("")}
+        ${[0, 15, 30, 45, 60].map((v) =>
+          `<button class="chip ${s.pause_seconds === v ? "active" : ""}" data-act="set" data-i="${i}" data-k="pause" data-v="${v}" type="button">${v}ث</button>`).join("")}
+      </div>
+      <div class="row" style="margin-top:.55rem;gap:1.1rem">
+        <label class="check"><input type="checkbox" data-act="agit" data-i="${i}" data-k="before" ${s.agitate_before ? "checked" : ""}/> تحريك قبل</label>
+        <label class="check"><input type="checkbox" data-act="agit" data-i="${i}" data-k="after" ${s.agitate_after ? "checked" : ""}/> تحريك بعد</label>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function syncManual() {
+  const tea = manual.kind === "tea";
+  const sum = manual.steps.reduce((a, s) => a + (Number(s.volume_ml) || 0), 0);
+
+  $("#heroName").textContent = manual.name.trim() || autoName();
+  $("#heroNum").textContent = manual.steps.length;
+  $("#heroKind").textContent = tea ? "STEEP" : "POUR";
+  $("#doseBig").textContent = manual.dose_g;
+  $("#waterBig").textContent = Math.round(manual.dose_g * manual.ratio);
+  $("#stepsCount").textContent = manual.steps.length;
+  const gb = $("#grindBig"); if (gb) gb.textContent = tea ? "—" : manual.grind_size;
+  const rb = $("#rpmBig"); if (rb) rb.textContent = tea ? "—" : manual.grind_rpm;
+  const ratioEl = $("#ratioBig");
+  if (ratioEl) ratioEl.textContent = tea ? (manual.dose_g ? (sum / manual.dose_g).toFixed(1) : "—") : manual.ratio;
+  $("#heroCard").style.background = `linear-gradient(135deg, ${manual.color}, ${manual.color}cc)`;
+
+  document.querySelectorAll("#manualForm [data-gset]").forEach((c) => {
+    const [k, v] = c.dataset.gset.split(":");
+    const cur = k === "dose" ? manual.dose_g : k === "ratio" ? manual.ratio : k === "grind" ? manual.grind_size : manual.grind_rpm;
+    c.classList.toggle("active", Number(cur) === Number(v));
+  });
+  const gr = $("#grindRange"); if (gr && Number(gr.value) !== Number(manual.grind_size)) gr.value = manual.grind_size;
+  const ci = $("#colorInput"); if (ci && ci.value.toLowerCase() !== manual.color.toLowerCase()) ci.value = manual.color;
+  document.querySelectorAll(".swatch-btn").forEach((b) =>
+    b.classList.toggle("active", b.dataset.color.toLowerCase() === manual.color.toLowerCase())
+  );
+  const ni = $("#nameInput"); if (ni) ni.placeholder = autoName();
+
+  const target = manual.dose_g * manual.ratio;
+  $("#totalWater").textContent = Math.round(tea ? sum : target);
+  $("#pourSum").textContent = `${Math.round(sum)} / ${Math.round(target)}ml`;
+  const badge = $("#volumeCheck");
+  if (tea) { badge.textContent = sum ? "✓" : ""; badge.className = "ok"; }
+  else if (target > 0) {
+    const drift = Math.abs(sum - target) / target;
+    if (drift <= 0.03) { badge.textContent = "المجموع مطابق ✓"; badge.className = "ok"; }
+    else { badge.textContent = `فرق ${Math.round(drift * 100)}%`; badge.className = "bad"; }
+  } else badge.textContent = "";
+
+  setKindFlags();
+  renderSteps();
+}
+
+function applyGStep(k, d) {
+  const L = LIMITS[manual.kind];
+  if (k === "dose") manual.dose_g = clampN(+(manual.dose_g + d).toFixed(1), ...L.dose);
+  else if (k === "ratio") manual.ratio = clampN(+(manual.ratio + d).toFixed(1), ...L.ratio);
+  else if (k === "grind") manual.grind_size = clampN(manual.grind_size + d, ...L.grind);
+  else if (k === "rpm") manual.grind_rpm = clampN(manual.grind_rpm + d, ...L.rpm);
+  syncManual();
+}
+
+$("#manualForm").addEventListener("click", (e) => {
+  const el = e.target.closest("[data-gstep],[data-gset],[data-temp],[data-color]");
+  if (!el) return;
+  if (el.dataset.gstep) { const [k, d] = el.dataset.gstep.split(":"); applyGStep(k, +d); return; }
+  if (el.dataset.gset) {
+    const [k, v] = el.dataset.gset.split(":");
+    if (k === "dose") manual.dose_g = clampN(+v, ...LIMITS[manual.kind].dose);
+    else if (k === "ratio") manual.ratio = clampN(+v, ...LIMITS[manual.kind].ratio);
+    else if (k === "grind") manual.grind_size = clampN(+v, ...LIMITS[manual.kind].grind);
+    else if (k === "rpm") manual.grind_rpm = clampN(+v, ...LIMITS[manual.kind].rpm);
+    syncManual(); return;
+  }
+  if (el.dataset.temp) { manual.steps.forEach((s) => { s.temperature_c = +el.dataset.temp; }); syncManual(); return; }
+  if (el.dataset.color) { manual.color = el.dataset.color; syncManual(); return; }
+});
+
+$("#steps").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-act]");
+  if (!btn || btn.dataset.act === "agit") return;
+  const i = +btn.dataset.i;
+  const s = manual.steps[i];
+  if (!s) return;
+  const L = LIMITS[manual.kind];
+  const act = btn.dataset.act;
+  if (act === "remove") { manual.steps.splice(i, 1); syncManual(); return; }
+  if (act === "adj") {
+    const d = +btn.dataset.d;
+    if (btn.dataset.k === "vol") s.volume_ml = clampN(s.volume_ml + d, ...L.vol);
+    else if (btn.dataset.k === "temp") s.temperature_c = clampN(s.temperature_c + d, ...L.temp);
+    else if (btn.dataset.k === "pause") {
+      const key = manual.kind === "tea" ? "steep_seconds" : "pause_seconds";
+      s[key] = clampN((s[key] || 0) + d, ...L.pause);
+    }
+    syncManual(); return;
+  }
+  if (act === "set") {
+    if (btn.dataset.k === "pattern") s.pattern = btn.dataset.v;
+    else if (btn.dataset.k === "pause") s.pause_seconds = +btn.dataset.v;
+    else if (btn.dataset.k === "steep") s.steep_seconds = +btn.dataset.v;
+    syncManual(); return;
+  }
+});
+
+$("#steps").addEventListener("change", (e) => {
+  const cb = e.target.closest('[data-act="agit"]');
+  if (!cb) return;
+  const s = manual.steps[+cb.dataset.i];
+  if (s) s["agitate_" + cb.dataset.k] = cb.checked;
+});
+
+$("#grindRange").addEventListener("input", (e) => {
+  manual.grind_size = clampN(+e.target.value, ...LIMITS.coffee.grind);
+  $("#grindBig").textContent = manual.grind_size;
+  document.querySelectorAll("#manualForm [data-gset]").forEach((c) => {
+    const [k, v] = c.dataset.gset.split(":");
+    c.classList.toggle("active", k === "grind" && Number(manual.grind_size) === Number(v));
+  });
+});
+
+$("#colorInput").addEventListener("input", (e) => {
+  manual.color = e.target.value;
+  $("#heroCard").style.background = `linear-gradient(135deg, ${manual.color}, ${manual.color}cc)`;
+  document.querySelectorAll(".swatch-btn").forEach((b) => b.classList.remove("active"));
+});
+
+$("#nameInput").addEventListener("input", (e) => {
+  manual.name = e.target.value;
+  $("#heroName").textContent = manual.name.trim() || autoName();
+  e.target.placeholder = autoName();
+});
+
+$("#autoNameBtn").addEventListener("click", () => {
+  manual.name = "";
+  $("#nameInput").value = "";
+  syncManual();
+});
+
+$("#balanceBtn").addEventListener("click", () => {
+  if (manual.kind !== "coffee") return;
+  const total = manual.dose_g * manual.ratio;
+  const n = manual.steps.length;
+  if (!n) { toast("أضف خطوة أولاً", "bad"); return; }
+  if (n === 1) { manual.steps[0].volume_ml = Math.round(total); syncManual(); toast("تمت الموازنة"); return; }
+  const bloom = clampN(Math.round((manual.dose_g * 2.5) / 5) * 5, 15, 80);
+  const rest = Math.max(0, total - bloom);
+  const each = Math.max(5, Math.round(rest / (n - 1)));
+  manual.steps[0].volume_ml = Math.min(bloom, total - (n - 1) * 5);
+  for (let i = 1; i < n; i++) manual.steps[i].volume_ml = each;
+  const sum = manual.steps.reduce((a, s) => a + s.volume_ml, 0);
+  manual.steps[n - 1].volume_ml = Math.max(5, manual.steps[n - 1].volume_ml + (total - sum));
+  syncManual();
+  toast("تمت موازنة الماء تلقائياً");
+});
+
+$("#addStep").addEventListener("click", () => {
+  const max = manual.kind === "tea" ? 3 : 7;
+  if (manual.steps.length >= max) { toast(`الحد الأقصى ${max} خطوات`, "bad"); return; }
+  if (manual.kind === "tea") {
+    manual.steps.push({ volume_ml: 80, temperature_c: 85, steep_seconds: 120 });
+  } else {
+    const sum = manual.steps.reduce((a, s) => a + s.volume_ml, 0);
+    const target = manual.dose_g * manual.ratio;
+    const suggested = Math.max(10, Math.round((target - sum) / Math.max(1, max - manual.steps.length)));
+    manual.steps.push({ volume_ml: clampN(suggested, 10, 400), temperature_c: 93, pattern: "circular", pause_seconds: 0, agitate_before: false, agitate_after: false });
+  }
+  syncManual();
+});
+
+function buildSpec() {
+  const tea = manual.kind === "tea";
+  const sum = manual.steps.reduce((a, s) => a + (Number(s.volume_ml) || 0), 0);
+  const spec = {
+    kind: manual.kind,
+    name: manual.name.trim() || autoName(),
+    dose_g: manual.dose_g,
+    ratio: tea ? Number((manual.dose_g ? sum / manual.dose_g : 15).toFixed(1)) : manual.ratio,
+    color: manual.color,
+  };
+  if (tea) {
+    spec.steeps = manual.steps.slice(0, 3).map((s) => ({
+      volume_ml: clampN(s.volume_ml, ...LIMITS.tea.vol),
+      temperature_c: clampN(s.temperature_c, ...LIMITS.tea.temp),
+      steep_seconds: Math.round(clampN(s.steep_seconds, ...LIMITS.tea.pause)),
+    }));
+  } else {
+    spec.grind_size = manual.grind_size;
+    spec.grind_rpm = manual.grind_rpm;
+    spec.pours = manual.steps.map((s, i) => ({
+      name: i === 0 ? "Bloom" : `Pour ${i + 1}`,
+      volume_ml: clampN(s.volume_ml, ...LIMITS.coffee.vol),
+      temperature_c: clampN(s.temperature_c, ...LIMITS.coffee.temp),
+      pattern: PATTERN_LABELS[s.pattern] ? s.pattern : "circular",
+      flow_rate: 3.2,
+      pause_seconds: Math.round(clampN(s.pause_seconds, ...LIMITS.coffee.pause)),
+      agitate_before: !!s.agitate_before,
+      agitate_after: !!s.agitate_after,
+    }));
+  }
+  return spec;
+}
+
+$("#saveManual").addEventListener("click", async () => {
+  if (!manual.steps.length) return toast("أضف خطوة واحدة على الأقل", "bad");
+  const spec = buildSpec();
+  try {
+    if (manual.editingId) {
+      // update the existing cloud recipe in place
+      await api(`/api/recipes/${manual.editingId}`, { method: "PUT", body: JSON.stringify(spec) });
+      toast(`تم تحديث الوصفة (${manual.editingId})`);
+    } else {
+      const out = await api("/api/recipes", { method: "POST", body: JSON.stringify(spec) });
+      toast(`تم حفظ الوصفة (${out.id})`);
+    }
+    manual.editingId = null;
+    showPanel("recipes");
+  } catch (err) {
+    toast(err.message, "bad");
+  }
+});
+
+$("#manualImportBtn").addEventListener("click", () => showPanel("import"));
+
+$$(".seg-btn").forEach((b) => b.addEventListener("click", () => {
+  if (manual.kind === b.dataset.kind) return;
+  manual.kind = b.dataset.kind;
+  manual.dose_g = clampN(manual.dose_g, ...LIMITS[manual.kind].dose);
+  manual.color = manual.kind === "tea" ? "#A8C686" : "#B9C4D8";
+  manual.steps = defaultSteps(manual.kind);
+  syncManual();
+}));
+
+function fillManualForm(r, recipeId = null) {
+  manual.editingId = recipeId;
+  manual.kind = (r.kind === "tea" || r.cup_type === "tea") ? "tea" : "coffee";
+  manual.name = r.name || "";
+  manual.dose_g = clampN(r.dose_g ?? 15, ...LIMITS[manual.kind].dose);
+  manual.ratio = clampN(r.ratio ?? 16, ...LIMITS[manual.kind].ratio);
+  manual.color = r.color || (manual.kind === "tea" ? "#A8C686" : "#B9C4D8");
+  if (manual.kind === "coffee") {
+    manual.grind_size = clampN(r.grind_size ?? 70, ...LIMITS.coffee.grind);
+    manual.grind_rpm = clampN(r.grind_rpm ?? 80, ...LIMITS.coffee.rpm);
+    manual.steps = (r.pours || r.pourList || []).slice(0, 7).map((p) => ({
+      volume_ml: clampN(p.volume_ml ?? 30, ...LIMITS.coffee.vol),
+      temperature_c: clampN(p.temperature_c ?? 93, ...LIMITS.coffee.temp),
+      pattern: PATTERN_LABELS[p.pattern] ? p.pattern : "circular",
+      pause_seconds: clampN(p.pause_seconds ?? 0, ...LIMITS.coffee.pause),
+      agitate_before: !!p.agitate_before,
+      agitate_after: !!p.agitate_after,
+    }));
+  } else {
+    manual.steps = (r.steeps || []).slice(0, 3).map((s) => ({
+      volume_ml: clampN(s.volume_ml ?? 80, ...LIMITS.tea.vol),
+      temperature_c: clampN(s.temperature_c ?? 85, ...LIMITS.tea.temp),
+      steep_seconds: clampN(s.steep_seconds ?? 120, ...LIMITS.tea.pause),
+    }));
+  }
+  if (!manual.steps.length) manual.steps = defaultSteps(manual.kind);
+  const ni = $("#nameInput");
+  if (ni) ni.value = manual.name;
+  syncManual();
+}
+
+// ============================================================
+// RECIPES LIST + IMPORT + BOOT
+// ============================================================
+
+const ICON_EDIT = '<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+const ICON_COPY = '<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
+const ICON_TRASH = '<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
+const ICON_SHARE = '<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
+
+async function loadRecipes() {
+  const box = $("#recipeList");
+  box.innerHTML = '<div class="empty"><p class="muted">…</p></div>';
+  try {
+    let recipes;
+    if (IS_STATIC) {
+      recipes = JSON.parse(localStorage.getItem("xbloom.recipes") || "[]");
+    } else {
+      ({ recipes } = await api("/api/recipes"));
+    }
+    if (!recipes.length) { box.innerHTML = '<div class="empty"><p class="muted">لا توجد وصفات.</p></div>'; return; }
+    box.innerHTML = recipes.map(recipeCard).join("");
+  } catch (err) {
+    box.innerHTML = `<div class="empty"><p class="muted">${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+function recipeCard(r) {
+  const isTea = r.cup_type === "tea";
+  const total = (Number(r.dose_g) || 0) * (Number(r.ratio) || 0);
+  return `
+    <div class="recipe" data-id="${r.id}">
+      <h3><span class="swatch" style="background:${escapeHtml(r.color || "#B9C4D8")}"></span>${escapeHtml(r.name)}</h3>
+      <div class="meta">${isTea ? "شاي" : "قهوة"} · ${r.dose_g}g · ${Math.round(total)}ml${isTea ? "" : ` · طحن ${r.grind_size}`}</div>
+      <div class="meta">${(r.pours?.length || 0)} خطوة${r.share_link ? ` · <a href="${escapeHtml(r.share_link)}" target="_blank">مشاركة</a>` : ""}</div>
+      <div class="acts">
+        <button class="btn" data-act="edit" type="button">${ICON_EDIT} تعديل</button>
+        <button class="btn" data-act="dup" type="button">${ICON_COPY} نسخ</button>
+        <button class="btn" data-act="pub" type="button">${ICON_SHARE} نشر</button>
+        <button class="btn btn-danger" data-act="del" type="button">${ICON_TRASH} حذف</button>
+      </div>
+    </div>`;
+}
+
+$("#recipeList").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-act]");
+  if (!btn) return;
+  const card = btn.closest(".recipe");
+  const id = card.dataset.id;
+  const name = card.querySelector("h3").textContent.trim();
+  if (btn.dataset.act === "del") {
+    if (!confirm(`حذف الوصفة "${name}"؟ لا يمكن التراجع.`)) return;
+    try {
+      if (IS_STATIC) {
+        const saved = JSON.parse(localStorage.getItem("xbloom.recipes") || "[]").filter((x) => String(x.id) !== String(id));
+        localStorage.setItem("xbloom.recipes", JSON.stringify(saved));
+        toast("تم الحذف");
+      } else {
+        await api(`/api/recipes/${id}`, { method: "DELETE" });
+        toast("تم الحذف");
+      }
+      loadRecipes();
+    } catch (err) { toast(err.message, "bad"); }
+    return;
+  }
+  try {
+    const recipes = IS_STATIC
+      ? JSON.parse(localStorage.getItem("xbloom.recipes") || "[]")
+      : (await api("/api/recipes")).recipes;
+    const r = recipes.find((x) => String(x.id) === String(id));
+    if (!r) return;
+    if (btn.dataset.act === "dup") {
+      const copy = { kind: r.cup_type === "tea" ? "tea" : "coffee", name: `${r.name} (نسخة)`, dose_g: r.dose_g, ratio: r.ratio, color: r.color, pours: r.pours };
+      const ok = await saveRecipe(copy);
+      if (ok) loadRecipes();
+      return;
+    }
+    if (btn.dataset.act === "pub") {
+      const spec = {
+        kind: r.cup_type === "tea" ? "tea" : "coffee",
+        name: r.name, dose_g: r.dose_g, ratio: r.ratio,
+        color: r.color, notes: r.notes || "",
+        grind_size: r.grind_size, grind_rpm: r.grind_rpm,
+        pours: r.pours, steeps: r.pours,
+      };
+      try {
+        if (IS_STATIC) {
+          publishCommunityStatic(spec);
+          toast(`تم نشر "${r.name}" في المجتمع ✓`);
+        } else {
+          await api("/api/community/publish", { method: "POST", body: JSON.stringify(spec) });
+          toast(`تم نشر "${r.name}" في المجتمع ✓`);
+        }
+      } catch (e) { toast(e.message, "bad"); }
+      return;
+    }
+    // open the recipe in the manual builder for full editing
+    fillManualForm({
+      kind: r.cup_type === "tea" ? "tea" : "coffee",
+      name: r.name,
+      dose_g: r.dose_g,
+      ratio: r.ratio,
+      color: r.color,
+      grind_size: r.grind_size,
+      grind_rpm: r.grind_rpm,
+      pours: r.pours,
+      steeps: r.pours,
+    }, id);
+    showPanel("manual");
+    toast(`تعديل: ${r.name}`);
+  } catch (err) { toast(err.message, "bad"); }
+});
+
+$("#reloadRecipes").addEventListener("click", loadRecipes);
+
+// --- import ---
+
+$("#importBtn").addEventListener("click", async () => {
+  const url = $("#importUrl").value.trim();
+  if (!url) return;
+  $("#importResult").innerHTML = '<p class="muted">…</p>';
+  try {
+    const recipe = await api("/api/import", { method: "POST", body: JSON.stringify({ share_url: url }) });
+    state.preview = recipe;
+    renderPreview(recipe);
+    $("#importResult").innerHTML = '<p class="ok">تم الجلب.</p>';
+    toast("تم جلب الوصفة");
+    showPanel("assistant");
+  } catch (err) {
+    $("#importResult").innerHTML = `<p class="bad">${escapeHtml(err.message)}</p>`;
+  }
+});
+
+// ============================================================
+// COMMUNITY
+// ============================================================
+
+const communityFilters = { kind: "all", roast: "all", process: "all", search: "" };
+let communitySearchTimer = null;
+
+function communityCard(r) {
+  const isTea = r.kind === "tea";
+  const steps = isTea ? (r.steeps || []) : (r.pours || []);
+  const tags = [
+    r.origin ? `<span class="com-tag">${escapeHtml(r.origin)}${r.region ? ` · ${escapeHtml(r.region)}` : ""}</span>` : "",
+    r.process ? `<span class="com-tag">${escapeHtml(PROCESS_LABELS[r.process] || r.process)}</span>` : "",
+    r.roast ? `<span class="com-tag">${escapeHtml(ROAST_LABELS[r.roast] || r.roast)}</span>` : "",
+    r.company ? `<span class="com-tag com-tag-company">${escapeHtml(r.company)}</span>` : "",
+  ].filter(Boolean).join("");
+  return `
+    <div class="recipe com-recipe" data-cid="${escapeHtml(r.id)}">
+      <div class="com-color-bar" style="background:${escapeHtml(r.color || "#B9C4D8")}"></div>
+      <div class="com-body">
+        <h3><span class="swatch" style="background:${escapeHtml(r.color || "#B9C4D8")}"></span>${escapeHtml(r.name)}</h3>
+        <div class="meta">${isTea ? "شاي" : "قهوة"} · ${r.dose_g}g · 1:${r.ratio} · ${steps.length} ${isTea ? "نقعة" : "صبة"}</div>
+        <div class="com-tags">${tags}</div>
+        ${r.notes ? `<p class="com-notes muted small">${escapeHtml(r.notes.slice(0, 120))}${r.notes.length > 120 ? "…" : ""}</p>` : ""}
+        <div class="com-foot">
+          <span class="com-author muted small">✍ ${escapeHtml(r.author || "مجهول")}</span>
+          <div class="acts">
+            <button class="btn" data-cact="like" type="button">
+              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              ${r.likes || 0}
+            </button>
+            <button class="btn" data-cact="import" type="button">${ICON_COPY} استيراد</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function loadCommunity() {
+  const box = $("#communityList");
+  box.innerHTML = '<div class="empty"><p class="muted">…</p></div>';
+  try {
+    let recipes;
+    if (IS_STATIC) {
+      recipes = getCommunityStatic();
+    } else {
+      const q = new URLSearchParams();
+      if (communityFilters.kind !== "all") q.set("kind", communityFilters.kind);
+      if (communityFilters.roast !== "all") q.set("roast", communityFilters.roast);
+      if (communityFilters.process !== "all") q.set("process", communityFilters.process);
+      if (communityFilters.search) { q.set("origin", communityFilters.search); q.set("company", communityFilters.search); }
+      ({ recipes } = await api(`/api/community?${q}`));
+    }
+    if (!recipes.length) { box.innerHTML = '<div class="empty"><p class="muted">لا توجد وصفات بهذه الفلاتر.</p></div>'; return; }
+    box.innerHTML = recipes.map(communityCard).join("");
+  } catch (err) {
+    box.innerHTML = `<div class="empty"><p class="muted">${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+// filter controls
+$$("[data-cf-kind]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    communityFilters.kind = btn.dataset.cfKind;
+    $$("[data-cf-kind]").forEach((b) => b.classList.toggle("active", b.dataset.cfKind === communityFilters.kind));
+    loadCommunity();
+  });
+});
+$$("[data-cf-roast]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    communityFilters.roast = btn.dataset.cfRoast;
+    $$("[data-cf-roast]").forEach((b) => b.classList.toggle("active", b.dataset.cfRoast === communityFilters.roast));
+    loadCommunity();
+  });
+});
+$$("[data-cf-process]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    communityFilters.process = btn.dataset.cfProcess;
+    $$("[data-cf-process]").forEach((b) => b.classList.toggle("active", b.dataset.cfProcess === communityFilters.process));
+    loadCommunity();
+  });
+});
+$("#communitySearch").addEventListener("input", (e) => {
+  communityFilters.search = e.target.value.trim();
+  clearTimeout(communitySearchTimer);
+  communitySearchTimer = setTimeout(loadCommunity, 400);
+});
+$("#reloadCommunity").addEventListener("click", loadCommunity);
+
+// community list actions
+$("#communityList").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-cact]");
+  if (!btn) return;
+  const card = btn.closest("[data-cid]");
+  const id = card.dataset.cid;
+  if (btn.dataset.cact === "like") {
+    try {
+      const r = await api(`/api/community/${id}/like`, { method: "POST" });
+      btn.innerHTML = `<svg class="i" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> ${r.likes}`;
+      btn.style.color = "var(--danger)";
+    } catch {}
+    return;
+  }
+  if (btn.dataset.cact === "import") {
+    // load the community recipe into the manual editor
+    try {
+      const { recipes } = await api(`/api/community`);
+      const r = recipes.find((x) => x.id === id);
+      if (!r) return;
+      fillManualForm({
+        kind: r.kind,
+        name: r.name,
+        dose_g: r.dose_g,
+        ratio: r.ratio,
+        color: r.color,
+        grind_size: r.grind_size,
+        grind_rpm: r.grind_rpm,
+        pours: r.pours,
+        steeps: r.steeps || r.pours,
+      });
+      showPanel("manual");
+      toast(`استوردت وصفة "${r.name}"`);
+    } catch (err) { toast(err.message, "bad"); }
+  }
+});
+
+// --- boot ---
+const savedProvider = localStorage.getItem("xbloom.provider");
+if (savedProvider && (savedProvider === "ollama" || savedProvider === "openrouter")) {
+  state.provider = savedProvider;
+  $$("[data-provider]").forEach((b) => b.classList.toggle("active", b.dataset.provider === state.provider));
+  if (state.provider === "openrouter") {
+    $("#assistHint").textContent = "OpenRouter — سحابة، يدعم صور وموديلات متعددة";
+  }
+}
+manual.steps = defaultSteps("coffee");
+syncManual();
+loadSettings();
+initSettingsPanel();
+if (IS_STATIC) {
+  // skip XBloom cloud login in static mode
+  $("#loginBtn")?.classList.add("hidden");
+  $("#sessionHint").textContent = "GitHub Pages — وضع مستقل";
+} else {
+  refreshSession();
+}
+loadModels();
+
+// ============================================================
+// STATIC MODE — community seed + direct AI calls
+// ============================================================
+
+const COMMUNITY_SEED = [
+  { id:"seed-1", name:"Ethiopian Yirgacheffe Natural", kind:"coffee", author:"CoffeeLover42", origin:"Ethiopia", region:"Yirgacheffe", process:"natural", roast:"light", company:"Nordic Roasters", dose_g:15, ratio:15, grind_size:62, grind_rpm:80, color:"#D4BFA0", notes:"Bright and fruity with blueberry notes. Natural process adds a wine-like complexity. Bloom is extended for fresh CO2 release.", pours:[{name:"Bloom",volume_ml:38,temperature_c:94,pattern:"circular",pause_seconds:45},{name:"Pour 2",volume_ml:87,temperature_c:94,pattern:"spiral",pause_seconds:30},{name:"Pour 3",volume_ml:100,temperature_c:94,pattern:"circular",pause_seconds:0}], likes:14, createdAt:"2025-01-10T10:00:00Z" },
+  { id:"seed-2", name:"Colombian Huila Washed", kind:"coffee", author:"BrewMaster", origin:"Colombia", region:"Huila", process:"washed", roast:"medium", company:"Blue Bottle", dose_g:15, ratio:16, grind_size:72, grind_rpm:80, color:"#B9C4D8", notes:"Clean, balanced, caramel sweetness. Classic Colombian pour-over. Washed process gives clarity and brightness.", pours:[{name:"Bloom",volume_ml:38,temperature_c:91,pattern:"circular",pause_seconds:40},{name:"Pour 2",volume_ml:102,temperature_c:91,pattern:"circular",pause_seconds:20},{name:"Pour 3",volume_ml:100,temperature_c:91,pattern:"circular",pause_seconds:0}], likes:9, createdAt:"2025-01-15T12:00:00Z" },
+  { id:"seed-3", name:"Japanese Sencha Green", kind:"tea", author:"TeaCeremony", origin:"Japan", region:"Shizuoka", process:"steamed", roast:null, company:"Ippodo", dose_g:4, ratio:17, color:"#A8C686", notes:"Umami-rich Japanese sencha. Lower temperature preserves sweetness and avoids bitterness.", steeps:[{volume_ml:70,temperature_c:72,steep_seconds:60},{volume_ml:70,temperature_c:74,steep_seconds:30},{volume_ml:70,temperature_c:78,steep_seconds:45}], likes:7, createdAt:"2025-01-20T08:00:00Z" },
+  { id:"seed-4", name:"Brazilian Dark Roast", kind:"coffee", author:"DarkRoastFan", origin:"Brazil", region:"Cerrado", process:"natural", roast:"dark", company:"Stumptown", dose_g:18, ratio:14, grind_size:88, grind_rpm:75, color:"#6F4E37", notes:"Chocolate and nut forward. Lower ratio for strength, cooler water to avoid over-extraction.", pours:[{name:"Bloom",volume_ml:45,temperature_c:87,pattern:"centered",pause_seconds:25},{name:"Pour 2",volume_ml:100,temperature_c:87,pattern:"circular",pause_seconds:0},{name:"Pour 3",volume_ml:107,temperature_c:87,pattern:"circular",pause_seconds:0}], likes:11, createdAt:"2025-01-25T14:00:00Z" },
+  { id:"seed-5", name:"Kenyan AA Washed Light", kind:"coffee", author:"AcidityFan", origin:"Kenya", region:"Kirinyaga", process:"washed", roast:"light", company:"Counter Culture", dose_g:14, ratio:16, grind_size:60, grind_rpm:85, color:"#C9A9A9", notes:"Intense blackcurrant and tomato. Kenyan AA needs fine grind and high temp.", pours:[{name:"Bloom",volume_ml:35,temperature_c:95,pattern:"circular",pause_seconds:45},{name:"Pour 2",volume_ml:75,temperature_c:95,pattern:"spiral",pause_seconds:30},{name:"Pour 3",volume_ml:75,temperature_c:94,pattern:"spiral",pause_seconds:20},{name:"Pour 4",volume_ml:39,temperature_c:93,pattern:"circular",pause_seconds:0}], likes:6, createdAt:"2025-02-01T09:00:00Z" },
+  { id:"seed-6", name:"Taiwanese High Mountain Oolong", kind:"tea", author:"TeaMaster88", origin:"Taiwan", region:"Ali Shan", process:"partially_oxidized", roast:null, company:"Ten Ren", dose_g:5, ratio:14, color:"#D9C9A8", notes:"Floral and creamy Ali Shan oolong. Three short steeps to build complexity.", steeps:[{volume_ml:70,temperature_c:90,steep_seconds:45},{volume_ml:70,temperature_c:92,steep_seconds:60},{volume_ml:70,temperature_c:94,steep_seconds:90}], likes:5, createdAt:"2025-02-05T11:00:00Z" },
+];
+
+function getCommunityStatic() {
+  let all = JSON.parse(localStorage.getItem("xbloom.community.static") || "null") || [...COMMUNITY_SEED];
+  const f = communityFilters;
+  if (f.kind !== "all") all = all.filter((r) => r.kind === f.kind);
+  if (f.roast !== "all") all = all.filter((r) => r.roast === f.roast);
+  if (f.process !== "all") all = all.filter((r) => r.process === f.process);
+  if (f.search) {
+    const q = f.search.toLowerCase();
+    all = all.filter((r) => (r.origin || "").toLowerCase().includes(q) || (r.company || "").toLowerCase().includes(q));
+  }
+  return all.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+}
+
+function publishCommunityStatic(spec) {
+  const all = JSON.parse(localStorage.getItem("xbloom.community.static") || "null") || [...COMMUNITY_SEED];
+  const author = settings.name || "مستخدم";
+  const entry = { ...spec, id: `user-${Date.now()}`, author, likes: 0, createdAt: new Date().toISOString() };
+  all.unshift(entry);
+  localStorage.setItem("xbloom.community.static", JSON.stringify(all));
+  return entry;
+}
+
+// System prompt for static AI calls (same as server/prompt.js)
+const STATIC_SYSTEM_PROMPT = `You are an expert coffee and tea brewing assistant for the XBloom Studio machine (Omni dripper + Omni Tea Brewer).
+HARDWARE LIMITS: Coffee: dose_g 1-31 | ratio 8-20 | grind_size 40-120 (LOWER=FINER) | grind_rpm 60-120 | temp 40-95 | pause 0-255 | pattern centered|circular|spiral | 2-7 pours. Tea: dose_g 1-10 | vol 1-90 per steep | temp 65-100 | steep_seconds 0-360 | 1-3 steeps.
+GRIND: 40-55 very fine | 56-70 fine-medium | 71-85 medium | 86-100 medium-coarse | 101-120 coarse.
+ROAST TABLE: Very light 94-95°C grind 50-62 ratio 1:15-16 | Light 90-93°C grind 58-68 ratio 1:15 | Medium 88-91°C grind 70-80 ratio 1:15-16 | Dark 85-88°C grind 82-95 ratio 1:16-17.
+PROCESS ADJUSTMENTS: Washed/dense: grind 3-5 finer | Natural/honey/anaerobic: grind 3-5 coarser | Fresh<7days: bloom x2.5 dose 35-45s.
+COFFEE STEPS: dose_g TOTAL at top level. Sum of pour volumes = dose_g*ratio ±5%. Bloom = first pour 2-2.5x dose, long pause. 2-7 pours total.
+TEA: dose_g = total leaf weight. Green 70-80°C. White 75-85°C. Oolong 85-95°C. Black 90-100°C. Herbal 100°C. 1-3 steeps.
+DIAL-IN: sour/under = finer+hotter | bitter/over = coarser+cooler | weak = higher ratio | strong = lower ratio.
+OUTPUT: Reply with ONE raw JSON object only. No markdown, no text outside JSON. Use "kind":"coffee"+"pours" OR "kind":"tea"+"steeps". Include "name","dose_g","ratio","notes"(1 paragraph).`;
+
+async function runAssistStatic(text, image, liveEl, timerEl, onToken, onRecipe, onError) {
+  const model = $("#modelSelect").value || OR_DEFAULT_MODELS[0].id;
+  const isOR = state.provider === "openrouter";
+
+  if (isOR && !settings.orKey) { onError("أضف مفتاح OpenRouter في الإعدادات"); return; }
+  if (!isOR && !settings.ollamaUrl) { onError("أضف رابط Ollama في الإعدادات"); return; }
+
+  const messages = [
+    { role: "system", content: STATIC_SYSTEM_PROMPT },
+    ...state.history.slice(0, -1).slice(-4),
+    { role: "user", content: buildUserContent(text, image) },
+  ];
+
+  let fullText = "";
+  try {
+    if (isOR) {
+      const body = { model, messages, temperature: 0.5, stream: true };
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${settings.orKey}`,
+          "HTTP-Referer": location.origin,
+          "X-Title": "XBloom Studio",
+        },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) throw new Error(`OpenRouter ${resp.status}`);
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n"); buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (payload === "[DONE]") break;
+          try {
+            const token = JSON.parse(payload).choices?.[0]?.delta?.content ?? "";
+            if (token) { fullText += token; onToken(token); liveEl.querySelector("p:last-child")?.appendChild(timerEl); }
+          } catch { /* partial */ }
+        }
+      }
+    } else {
+      // Ollama direct
+      const resp = await fetch(`${settings.ollamaUrl}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, messages, stream: true }),
+      });
+      if (!resp.ok) throw new Error(`Ollama ${resp.status}`);
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n"); buf = lines.pop();
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const token = JSON.parse(line).message?.content ?? "";
+            if (token) { fullText += token; onToken(token); liveEl.querySelector("p:last-child")?.appendChild(timerEl); }
+          } catch { /* partial */ }
+        }
+      }
+    }
+    // Extract recipe JSON from fullText
+    const recipe = extractRecipeJson(fullText);
+    if (recipe) onRecipe(recipe);
+    else onToken("\n\n(لم يُعيد الموديل وصفة JSON واضحة)");
+  } catch (err) {
+    onError(String(err.message || err));
+  }
+}
+
+function buildUserContent(text, image) {
+  if (!image) return text || "(attached image)";
+  return [
+    { type: "text", text: text || "(attached a photo of the coffee bag)" },
+    { type: "image_url", image_url: { url: image } },
+  ];
+}
+
+function extractRecipeJson(raw) {
+  // Try to find a JSON object in the response
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const obj = JSON.parse(match[0]);
+    if (obj.kind && obj.dose_g && obj.ratio) return obj;
+  } catch { /* bad json */ }
+  return null;
+}

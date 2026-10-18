@@ -1,0 +1,16 @@
+.DS_Store
+.claude/
+.env
+.env.*
+**/.temp/
+.npm-cache/
+node_modules/
+
+# dev/debug scratch files
+_*.js
+_*.ps1
+*.log
+*.err.log
+req.json
+resp.ndjson
+coffee-brewing-*.tar.gz

@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>XBloom Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Overpass:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=10" />
+<meta name="theme-color" content="#0b0d12" />
+<link rel="manifest" href="manifest.webmanifest" />
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M17 8h1a3 3 0 1 1 0 6h-1M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1.5" x2="6" y2="4"/><line x1="10" y1="1.5" x2="10" y2="4"/><line x1="14" y1="1.5" x2="14" y2="4"/></svg>
+      </div>
+      <div class="logo-text">
+        <b>xbloom</b>
+        <div class="conn"><i class="dot"></i> متصل محلياً</div>
+      </div>
+    </div>
+
+    <div class="mod-grid">
+      <button class="mod-card active" data-goto="manual" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>
+        <span>يدوي</span>
+      </button>
+      <button class="mod-card" data-goto="assistant" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4"/><circle cx="9" cy="13" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.1" fill="currentColor" stroke="none"/><path d="M9 17h6"/></svg>
+        <span>AI</span>
+      </button>
+      <button class="mod-card" data-goto="recipes" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/></svg>
+        <span>وصفاتي</span>
+      </button>
+      <button class="mod-card" data-goto="import" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+        <span>استيراد</span>
+      </button>
+      <button class="mod-card" data-goto="community" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>المجتمع</span>
+      </button>
+      <button class="mod-card" data-goto="settings" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>إعدادات</span>
+      </button>
+    </div>
+
+    <div class="sidebar-foot">
+      <div class="who">
+        <div class="avatar" id="avatarInitial">?</div>
+        <div class="who-text">
+          <b id="sessionLabel">غير مسجل</b>
+          <span class="muted small" id="sessionHint">الوضع المحلي</span>
+        </div>
+      </div>
+      <div class="row">
+        <button id="loginBtn" class="btn btn-block btn-ghost-soft" type="button">دخول XBloom</button>
+        <button id="logoutBtn" class="btn btn-block btn-ghost-soft hidden" type="button">خروج</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <div class="main">
+
+    <!-- ============ MANUAL (touch-first) ============ -->
+    <section id="panel-manual" class="panel active">
+      <div class="panel-head">
+        <div>
+          <h1>بناء وصفة يدوياً</h1>
+          <p class="muted">باللمس فقط — بدون كيبورد</p>
+        </div>
+        <div class="seg" role="tablist">
+          <button type="button" class="seg-btn active" data-kind="coffee">
+            <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8h1a3 3 0 1 1 0 6h-1v2a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8h15z"/><line x1="6" y1="1.5" x2="6" y2="4.5"/><line x1="10" y1="1.5" x2="10" y2="4.5"/><line x1="14" y1="1.5" x2="14" y2="4.5"/></svg>
+            قهوة
+          </button>
+          <button type="button" class="seg-btn" data-kind="tea">
+            <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 3v7a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V3h16z"/><path d="M20 5h1a2 2 0 0 1 0 4h-1"/><line x1="8" y1="17" x2="8" y2="21"/><line x1="16" y1="17" x2="16" y2="21"/></svg>
+            شاي
+          </button>
+        </div>
+      </div>
+
+      <div class="recipe-hero" id="heroCard">
+        <div class="hero-bignum" id="heroNum">3</div>
+        <div class="hero-word" id="heroKind">POUR</div>
+        <div class="hero-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16v9l-2 4H6L4 13z" transform="rotate(9 12 12)"/></svg>
+        </div>
+        <div class="hero-name" id="heroName">قهوة 15g · 1:16</div>
+      </div>
+
+      <div id="manualForm" class="manual">
+
+        <!-- name (optional — auto by default) -->
+        <div class="name-row">
+          <label class="field">
+            <span>اسم الوصفة <small class="muted">(اختياري — تلقائي إذا فاضي)</small></span>
+            <input id="nameInput" placeholder="قهوة 15g · 1:16" autocomplete="off" />
+          </label>
+          <button id="autoNameBtn" class="btn btn-ghost-soft" type="button" title="رجوع للاسم التلقائي">↺ تلقائي</button>
+        </div>
+
+        <!-- dose -->
+        <div class="spec-row ctrl-row">
+          <span class="spec-label">الجرعة</span>
+          <div class="stepper">
+            <button type="button" data-gstep="dose:-0.5" aria-label="نقص الجرعة">−</button>
+            <b id="doseBig">15</b><span class="unit">g</span>
+            <button type="button" data-gstep="dose:+0.5" aria-label="زد الجرعة">+</button>
+          </div>
+          <div class="chips" data-coffee-only>
+            <button class="chip" data-gset="dose:12" type="button">12g</button>
+            <button class="chip" data-gset="dose:15" type="button">15g</button>
+            <button class="chip" data-gset="dose:18" type="button">18g</button>
+            <button class="chip" data-gset="dose:20" type="button">20g</button>
+          </div>
+          <div class="chips hidden" data-tea-only>
+            <button class="chip" data-gset="dose:3" type="button">3g</button>
+            <button class="chip" data-gset="dose:5" type="button">5g</button>
+            <button class="chip" data-gset="dose:6" type="button">6g</button>
+            <button class="chip" data-gset="dose:8" type="button">8g</button>
+          </div>
+        </div>
+
+        <!-- ratio (coffee target water) -->
+        <div class="spec-row ctrl-row" data-coffee-only>
+          <span class="spec-label">النسبة (قهوة : ماء)</span>
+          <div class="stepper">
+            <button type="button" data-gstep="ratio:-0.5" aria-label="نقص النسبة">−</button>
+            <b id="ratioBig">16</b>
+            <button type="button" data-gstep="ratio:+0.5" aria-label="زد النسبة">+</button>
+          </div>
+          <div class="chips">
+            <button class="chip" data-gset="ratio:14" type="button">1:14</button>
+            <button class="chip" data-gset="ratio:15" type="button">1:15</button>
+            <button class="chip" data-gset="ratio:16" type="button">1:16</button>
+            <button class="chip" data-gset="ratio:17" type="button">1:17</button>
+            <button class="chip" data-gset="ratio:18" type="button">1:18</button>
+          </div>
+        </div>
+
+        <!-- grind -->
+        <div class="spec-row ctrl-row" data-coffee-only>
+          <span class="spec-label">درجة الطحن <small class="muted">(40 ناعم — 120 خشن)</small></span>
+          <div class="stepper">
+            <button type="button" data-gstep="grind:-5" aria-label="أنعم">−</button>
+            <b id="grindBig">70</b>
+            <button type="button" data-gstep="grind:+5" aria-label="أخشن">+</button>
+          </div>
+          <input type="range" id="grindRange" min="40" max="120" step="1" value="70" class="range" aria-label="درجة الطحن" />
+          <div class="chips">
+            <button class="chip" data-gset="grind:60" type="button">ناعم 60</button>
+            <button class="chip" data-gset="grind:75" type="button">متوسط 75</button>
+            <button class="chip" data-gset="grind:90" type="button">خشن 90</button>
+          </div>
+        </div>
+
+        <!-- rpm -->
+        <div class="spec-row ctrl-row" data-coffee-only>
+          <span class="spec-label">سرعة الطاحونة (RPM)</span>
+          <div class="stepper">
+            <button type="button" data-gstep="rpm:-5" aria-label="أبطأ">−</button>
+            <b id="rpmBig">80</b>
+            <button type="button" data-gstep="rpm:+5" aria-label="أسرع">+</button>
+          </div>
+          <div class="chips">
+            <button class="chip" data-gset="rpm:60" type="button">60</button>
+            <button class="chip" data-gset="rpm:80" type="button">80</button>
+            <button class="chip" data-gset="rpm:100" type="button">100</button>
+            <button class="chip" data-gset="rpm:120" type="button">120</button>
+          </div>
+        </div>
+
+        <!-- temperature presets -->
+        <div class="spec-row ctrl-row">
+          <span class="spec-label">حرارة الماء — تنطبق على كل الخطوات</span>
+          <div class="chips" data-coffee-only>
+            <button class="chip" data-temp="95" type="button">تحميص فاتح 95°</button>
+            <button class="chip" data-temp="91" type="button">متوسط 91°</button>
+            <button class="chip" data-temp="87" type="button">غامق 87°</button>
+          </div>
+          <div class="chips hidden" data-tea-only>
+            <button class="chip" data-temp="78" type="button">أخضر 78°</button>
+            <button class="chip" data-temp="82" type="button">أبيض 82°</button>
+            <button class="chip" data-temp="90" type="button">أولونغ 90°</button>
+            <button class="chip" data-temp="95" type="button">أسود 95°</button>
+            <button class="chip" data-temp="100" type="button">بابونج 100°</button>
+          </div>
+        </div>
+
+        <!-- color -->
+        <div class="spec-row ctrl-row">
+          <span class="spec-label">لون البطاقة</span>
+          <div class="swatches">
+            <button class="swatch-btn" data-color="#B9C4D8" style="background:#B9C4D8" type="button" aria-label="أزرق فاتح"></button>
+            <button class="swatch-btn" data-color="#A8C686" style="background:#A8C686" type="button" aria-label="أخضر"></button>
+            <button class="swatch-btn" data-color="#D9C9A8" style="background:#D9C9A8" type="button" aria-label="بيج"></button>
+            <button class="swatch-btn" data-color="#D4BFA0" style="background:#D4BFA0" type="button" aria-label="بني فاتح"></button>
+            <button class="swatch-btn" data-color="#C9A9A9" style="background:#C9A9A9" type="button" aria-label="وردي"></button>
+            <label class="custom-color">
+              <input type="color" id="colorInput" value="#B9C4D8" aria-label="لون مخصص" />
+              <span>مخصص</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- totals + balance -->
+        <div class="totals">
+          <div class="total-chip">
+            <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+            <span>إجمالي الماء: <b id="totalWater">240</b> مل</span>
+          </div>
+          <span id="waterBig" class="hidden">240</span>
+          <span id="volumeCheck" class="ok">المجموع مطابق ✓</span>
+          <span class="muted small" id="pourSum">240 / 240ml</span>
+          <button id="balanceBtn" class="btn btn-accent btn-add" type="button" data-coffee-only>⚡ موازنة تلقائية</button>
+        </div>
+
+        <!-- steps -->
+        <div class="steps-head">
+          <h3 id="stepsTitle">الصبات <span class="steps-count" id="stepsCount">3</span></h3>
+          <button type="button" id="addStep" class="btn btn-accent btn-add">
+            <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            إضافة
+          </button>
+        </div>
+        <div id="steps" class="steps"></div>
+
+        <div class="form-actions">
+          <button type="button" id="manualImportBtn" class="btn btn-ghost-soft">
+            <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
+            استيراد من لينك
+          </button>
+          <button type="button" id="saveManual" class="btn btn-accent btn-save">
+            <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+            حفظ في التطبيق
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ASSISTANT ============ -->
+    <section id="panel-assistant" class="panel" style="display:none">
+      <div class="panel-head">
+        <div>
+          <h1>مساعد التحضير</h1>
+          <p class="muted" id="assistHint">اختر المزوّد، صف قهوتك أو شايك</p>
+        </div>
+        <div class="provider-bar">
+          <div class="seg" role="tablist">
+            <button type="button" class="seg-btn active" data-provider="ollama">
+              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              Ollama <small class="muted" style="font-weight:400">(محلي)</small>
+            </button>
+            <button type="button" class="seg-btn" data-provider="openrouter">
+              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+              OpenRouter <small class="muted" style="font-weight:400">(سحابة)</small>
+            </button>
+          </div>
+          <div class="row" id="modelRow">
+            <select id="modelSelect" class="model-select"></select>
+            <button id="refreshModels" class="icon-btn" title="تحديث الموديلات" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="orKeyBanner" class="or-key-banner hidden">
+          <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          <span id="orKeyMsg">OpenRouter يحتاج مفتاح API</span>
+          <button type="button" class="btn" id="orKeyGoSettings" style="padding:.3rem .65rem;font-size:.75rem">⚙ الإعدادات</button>
+          <a href="https://openrouter.ai/keys" target="_blank" class="btn" style="padding:.3rem .65rem;font-size:.75rem">مفتاح مجاني</a>
+        </div>
+      </div>
+
+      <div class="split">
+        <div class="card chat-card">
+          <div id="chatLog" class="chat-log">
+            <div class="msg assistant">
+              <p>أهلاً! أنا مساعد التحضير — تعلمت من سكل القهوة الاحترافي ☕</p>
+              <p class="muted small">• أرفق صورة كيس القهوة 📷 وأقرأ التحميص والمعالجة والمنشأ</p>
+              <p class="muted small">• قل لي: «طلعت حامضة» أو «مرة» — أشخّص وأصلّح الوصفة</p>
+              <p class="muted small">• سمة الحبة باسمها وأحفظها — المرة الجاية أتذكرها</p>
+            </div>
+          </div>
+          <div id="attachPreview" class="attach-preview hidden">
+            <img id="attachThumb" alt="الصورة المرفقة" />
+            <button type="button" id="attachRemove" class="attach-remove" title="إزالة الصورة">✕</button>
+          </div>
+          <form id="chatForm" class="chat-input">
+            <button type="button" id="attachBtn" class="icon-btn attach-btn" title="إرفاق صورة كيس القهوة">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </button>
+            <textarea id="chatText" rows="2" placeholder="اكتب وصف القهوة… أو أرفق صورة الكيس 📷"></textarea>
+            <button type="submit" id="sendBtn" class="send-btn" title="إرسال">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </button>
+          </form>
+          <input type="file" id="attachFile" accept="image/*" class="hidden" />
+        </div>
+
+        <div class="preview-card">
+          <div class="card-head">
+            <h3>معاينة الوصفة</h3>
+            <span id="previewBadge" class="badge hidden">مولّدة</span>
+          </div>
+          <div id="previewBody" class="preview-body">
+            <div class="empty">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M17 8h1a3 3 0 1 1 0 6h-1M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>
+              <p class="muted">لا توجد وصفة بعد.</p>
+            </div>
+          </div>
+          <div id="previewActions" class="preview-actions hidden">
+            <button id="sendToManual" class="btn btn-ghost-soft" type="button">
+              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+              تعديل يدوي
+            </button>
+            <button id="saveAssisted" class="btn btn-accent" type="button">
+              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+              حفظ في التطبيق
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ RECIPES ============ -->
+    <section id="panel-recipes" class="panel" style="display:none">
+      <div class="panel-head">
+        <div>
+          <h1>وصفاتي</h1>
+          <p class="muted">كل وصفاتك المتزامنة مع تطبيق XBloom</p>
+        </div>
+        <button id="reloadRecipes" class="btn btn-ghost-soft" type="button">
+          <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+          تحديث
+        </button>
+      </div>
+      <div id="recipeList" class="recipe-list">
+        <div class="empty"><p class="muted">سجّل الدخول لعرض وصفاتك.</p></div>
+      </div>
+    </section>
+
+    <!-- ============ IMPORT ============ -->
+    <section id="panel-import" class="panel" style="display:none">
+      <div class="panel-head">
+        <div>
+          <h1>استيراد وصفة</h1>
+          <p class="muted">من لينك مشاركة XBloom</p>
+        </div>
+      </div>
+      <div class="card import-card">
+        <div class="import-row">
+          <input id="importUrl" placeholder="https://share-h5.xbloom.com/?id=…" />
+          <button id="importBtn" class="btn btn-accent" type="button">
+            <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            جلب
+          </button>
+        </div>
+        <div id="importResult" class="import-result"></div>
+      </div>
+    </section>
+
+    <!-- ============ COMMUNITY ============ -->
+    <section id="panel-community" class="panel" style="display:none">
+      <div class="panel-head">
+        <div>
+          <h1>وصفات المجتمع</h1>
+          <p class="muted">اكتشف وصفات من مستخدمين آخرين — فلتر وشارك ونسّخ</p>
+        </div>
+        <button id="reloadCommunity" class="btn btn-ghost-soft" type="button">
+          <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+          تحديث
+        </button>
+      </div>
+
+      <!-- filters -->
+      <div class="community-filters">
+        <div class="filter-group">
+          <label class="filter-label">النوع</label>
+          <div class="seg" role="tablist">
+            <button type="button" class="seg-btn active" data-cf-kind="all">الكل</button>
+            <button type="button" class="seg-btn" data-cf-kind="coffee">
+              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8h1a3 3 0 1 1 0 6h-1M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/></svg>
+              قهوة
+            </button>
+            <button type="button" class="seg-btn" data-cf-kind="tea">
+              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 3v7a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V3h16z"/><path d="M20 5h1a2 2 0 0 1 0 4h-1"/></svg>
+              شاي
+            </button>
+          </div>
+        </div>
+        <div class="filter-group">
+          <label class="filter-label">التحميص</label>
+          <div class="chips">
+            <button class="chip active" data-cf-roast="all" type="button">الكل</button>
+            <button class="chip" data-cf-roast="light" type="button">فاتح</button>
+            <button class="chip" data-cf-roast="medium" type="button">متوسط</button>
+            <button class="chip" data-cf-roast="dark" type="button">غامق</button>
+          </div>
+        </div>
+        <div class="filter-group">
+          <label class="filter-label">المعالجة</label>
+          <div class="chips">
+            <button class="chip active" data-cf-process="all" type="button">الكل</button>
+            <button class="chip" data-cf-process="washed" type="button">مغسول</button>
+            <button class="chip" data-cf-process="natural" type="button">طبيعي</button>
+            <button class="chip" data-cf-process="honey" type="button">عسل</button>
+            <button class="chip" data-cf-process="anaerobic" type="button">لاهوائي</button>
+          </div>
+        </div>
+        <div class="filter-group">
+          <label class="filter-label">بحث بالمنشأ أو الشركة</label>
+          <input id="communitySearch" placeholder="مثل: Ethiopia, Stumptown, Yemen…" class="filter-search" />
+        </div>
+      </div>
+
+      <div id="communityList" class="recipe-list">
+        <div class="empty"><p class="muted">جاري التحميل…</p></div>
+      </div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section id="panel-settings" class="panel" style="display:none">
+      <div class="panel-head">
+        <div>
+          <h1>الإعدادات</h1>
+          <p class="muted">خصّص التطبيق وأدخل مفاتيحك</p>
+        </div>
+      </div>
+
+      <div class="settings-form">
+
+        <!-- Profile -->
+        <div class="settings-section">
+          <h3>الملف الشخصي</h3>
+          <div class="settings-field">
+            <label for="settingName">الاسم المعروض</label>
+            <input id="settingName" type="text" placeholder="اسمك أو لقبك" autocomplete="off" />
+          </div>
+        </div>
+
+        <!-- AI Providers -->
+        <div class="settings-section">
+          <h3>مزودو الذكاء الاصطناعي</h3>
+          <div class="settings-field">
+            <label for="settingOrKey">مفتاح OpenRouter API</label>
+            <input id="settingOrKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" />
+            <span class="hint">احصل على مفتاح مجاني من <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a> — يفتح 100+ موديل (GPT-4o, Claude, Gemini…)</span>
+          </div>
+          <div class="settings-field">
+            <label for="settingOllamaUrl">رابط Ollama</label>
+            <input id="settingOllamaUrl" type="url" placeholder="http://localhost:11434" />
+            <span class="hint">الافتراضي: http://localhost:11434 — يعمل فقط عند تشغيل التطبيق محلياً</span>
+          </div>
+        </div>
+
+        <!-- Theme -->
+        <div class="settings-section">
+          <h3>المظهر</h3>
+          <div class="settings-field">
+            <label>اللون الرئيسي</label>
+            <div class="color-row">
+              <input id="settingAccent" type="color" value="#9ab5d9" title="لون مخصص" />
+              <div class="color-swatches">
+                <button class="color-swatch" data-accent="#9ab5d9" style="background:#9ab5d9" title="أزرق (افتراضي)" type="button"></button>
+                <button class="color-swatch" data-accent="#d9c9a8" style="background:#d9c9a8" title="بيج/كراميل" type="button"></button>
+                <button class="color-swatch" data-accent="#a8c686" style="background:#a8c686" title="أخضر شاي" type="button"></button>
+                <button class="color-swatch" data-accent="#c9a9a9" style="background:#c9a9a9" title="وردي" type="button"></button>
+                <button class="color-swatch" data-accent="#b5a8d8" style="background:#b5a8d8" title="بنفسجي" type="button"></button>
+                <button class="color-swatch" data-accent="#d4bfa0" style="background:#d4bfa0" title="كراميل دافئ" type="button"></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Static mode note (shown only when running remotely) -->
+        <div id="staticNote" class="settings-static-note hidden">
+          <b>وضع GitHub Pages</b> — الاتصال بـ OpenRouter يعمل مباشرة من المتصفح بمفتاحك. Ollama يحتاج تفعيل CORS محلياً (<code>OLLAMA_ORIGINS=*</code>).
+        </div>
+
+        <button id="saveSettingsBtn" class="btn btn-accent" type="button" style="align-self:flex-start;padding:.65rem 1.4rem">
+          <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+          حفظ الإعدادات
+        </button>
+
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<div id="loginModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>تسجيل الدخول</h2>
+      <p class="muted small">XBloom</p>
+    </div>
+    <div class="secure-note">
+      <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11V12z"/></svg>
+      <span>كلمة المرور تُستخدم مرة واحدة ولا تُخزَّن</span>
+    </div>
+    <form id="loginForm">
+      <label class="field"><span>البريد الإلكتروني</span><input name="email" type="email" required placeholder="you@email.com" /></label>
+      <label class="field"><span>كلمة المرور</span><input name="password" type="password" required placeholder="••••••••" /></label>
+      <div class="row end">
+        <button type="button" id="loginCancel" class="btn btn-ghost-soft">إلغاء</button>
+        <button type="submit" class="btn btn-accent">دخول</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="app.js?v=10"></script>
+</body>
+</html>
