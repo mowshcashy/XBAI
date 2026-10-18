@@ -147,12 +147,93 @@ function showPanel(name) {
     p.style.display = on ? "" : "none";
   });
   document.querySelectorAll(".mod-card").forEach((t) => t.classList.toggle("active", t.dataset.goto === name));
+  document.querySelectorAll(".mnav-btn").forEach((t) => t.classList.toggle("active", t.dataset.goto === name));
   if (name === "recipes") loadRecipes();
   if (name === "community") loadCommunity();
+  if (name === "home") populateHomeGrid();
 }
 document.querySelectorAll(".mod-card").forEach((t) =>
   t.addEventListener("click", () => showPanel(t.dataset.goto))
 );
+document.querySelectorAll(".mnav-btn").forEach((t) =>
+  t.addEventListener("click", () => showPanel(t.dataset.goto))
+);
+document.querySelectorAll(".home-ai-card, .home-qa-btn, #homeAvatarBtn").forEach((el) => {
+  if (el.dataset.goto) el.addEventListener("click", () => showPanel(el.dataset.goto));
+});
+
+// --- mobile home panel ---
+
+const HRC_COLORS = ["hrc-c0","hrc-c1","hrc-c2","hrc-c3","hrc-c4","hrc-c5","hrc-c6"];
+
+async function populateHomeGrid() {
+  const grid = $("#homeRecipeGrid");
+  if (!grid) return;
+  try {
+    let recipes;
+    if (IS_STATIC) {
+      recipes = JSON.parse(localStorage.getItem("xbloom.recipes") || "[]");
+    } else {
+      ({ recipes } = await api("/api/recipes").catch(() => ({ recipes: [] })));
+    }
+    const top = recipes.slice(0, 6);
+    if (!top.length) {
+      grid.innerHTML = `<p class="muted small" style="grid-column:1/-1;text-align:center;padding:1.5rem 0">لا توجد وصفات بعد — ابدأ بالـ AI!</p>`;
+      return;
+    }
+    grid.innerHTML = top.map((r, i) => {
+      const isTea = (r.cup_type || r.kind) === "tea";
+      const total = Math.round((Number(r.dose_g) || 0) * (Number(r.ratio) || 0));
+      const color = HRC_COLORS[i % HRC_COLORS.length];
+      return `<button class="home-recipe-card ${color}" data-recipe-id="${r.id}" type="button">
+        <span class="hrc-icon">${isTea ? "🍵" : "☕"}</span>
+        <p class="hrc-name">${escapeHtml(r.name)}</p>
+        <p class="hrc-meta">${isTea ? "شاي" : "قهوة"} · ${r.dose_g}g · ${total}ml</p>
+        <button class="hrc-send-btn" data-recipe-id="${r.id}" data-act="send" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </button>`;
+    }).join("");
+  } catch (_) {
+    grid.innerHTML = "";
+  }
+}
+
+// Sync home avatar with session label
+function syncHomeAvatar() {
+  const letter = $("#homeAvatarLetter");
+  const label = $("#sessionLabel");
+  if (letter && label) letter.textContent = (label.textContent.trim()[0] || "؟");
+}
+
+// Tap on home recipe card → open in manual editor
+$("#homeRecipeGrid").addEventListener("click", async (e) => {
+  const sendBtn = e.target.closest("[data-act='send']");
+  if (sendBtn) {
+    e.stopPropagation();
+    const id = sendBtn.dataset.recipeId;
+    const recipes = IS_STATIC
+      ? JSON.parse(localStorage.getItem("xbloom.recipes") || "[]")
+      : (await api("/api/recipes").catch(() => ({ recipes: [] }))).recipes;
+    const r = recipes.find((x) => String(x.id) === String(id));
+    if (r) { state.preview = normalizeRecipe(r); await sendToDevice(); }
+    return;
+  }
+  const card = e.target.closest("[data-recipe-id]");
+  if (card) {
+    const id = card.dataset.recipeId;
+    const recipes = IS_STATIC
+      ? JSON.parse(localStorage.getItem("xbloom.recipes") || "[]")
+      : (await api("/api/recipes").catch(() => ({ recipes: [] }))).recipes;
+    const r = recipes.find((x) => String(x.id) === String(id));
+    if (r) { fillManualForm(normalizeRecipe(r)); showPanel("manual"); }
+  }
+});
+
+// On mobile, default to home panel; on desktop keep manual
+if (window.innerWidth <= 767) {
+  showPanel("home");
+}
 
 // --- session ---
 
@@ -162,13 +243,16 @@ async function refreshSession() {
     if (s.loggedIn) {
       $("#sessionLabel").textContent = s.email || "مسجل";
       $("#sessionHint").textContent = "متصل بالسحابة";
-      $("#avatarInitial").textContent = (s.email || "؟")[0].toUpperCase();
+      const initial = (s.email || "؟")[0].toUpperCase();
+      $("#avatarInitial").textContent = initial;
+      if ($("#homeAvatarLetter")) $("#homeAvatarLetter").textContent = initial;
       $("#loginBtn").classList.add("hidden");
       $("#logoutBtn").classList.remove("hidden");
     } else {
       $("#sessionLabel").textContent = "غير مسجل";
       $("#sessionHint").textContent = "الوضع المحلي";
       $("#avatarInitial").textContent = "?";
+      if ($("#homeAvatarLetter")) $("#homeAvatarLetter").textContent = "؟";
       $("#loginBtn").classList.remove("hidden");
       $("#logoutBtn").classList.add("hidden");
     }
