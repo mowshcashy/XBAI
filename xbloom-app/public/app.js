@@ -15,29 +15,34 @@ const IS_STATIC = !["localhost", "127.0.0.1", ""].includes(location.hostname) &&
 // ============================================================
 // SETTINGS — loaded from localStorage, applied on boot
 // ============================================================
+const DEFAULT_ACCENT = "#f26b1d";
 const settings = {
   name: "",
   orKey: "",
   ollamaUrl: "http://localhost:11434",
-  accent: "#9ab5d9",
+  accent: DEFAULT_ACCENT,
 };
 
 function loadSettings() {
   settings.name = localStorage.getItem("xbloom.s.name") || "";
   settings.orKey = localStorage.getItem("xbloom.s.orKey") || "";
   settings.ollamaUrl = localStorage.getItem("xbloom.s.ollamaUrl") || "http://localhost:11434";
-  settings.accent = localStorage.getItem("xbloom.s.accent") || "#9ab5d9";
+  const savedAccent = localStorage.getItem("xbloom.s.accent");
+  settings.accent = savedAccent && savedAccent !== "#9ab5d9" ? savedAccent : DEFAULT_ACCENT;
   applyAccent(settings.accent);
   updateSidebarProfile();
   if (IS_STATIC) $("#staticNote")?.classList.remove("hidden");
 }
 
 function applyAccent(hex) {
-  const r = parseInt(hex.slice(1, 3), 16) || 154;
-  const g = parseInt(hex.slice(3, 5), 16) || 181;
-  const b = parseInt(hex.slice(5, 7), 16) || 217;
-  document.documentElement.style.setProperty("--accent", hex);
-  document.documentElement.style.setProperty("--accent-faint", `rgba(${r},${g},${b},0.14)`);
+  const r = parseInt(hex.slice(1, 3), 16) || 242;
+  const g = parseInt(hex.slice(3, 5), 16) || 107;
+  const b = parseInt(hex.slice(5, 7), 16) || 29;
+  const lift = (c) => Math.round(c + (255 - c) * 0.32);
+  const root = document.documentElement.style;
+  root.setProperty("--accent", hex);
+  root.setProperty("--accent-2", `rgb(${lift(r)},${lift(g)},${lift(b)})`);
+  root.setProperty("--accent-faint", `rgba(${r},${g},${b},0.18)`);
 }
 
 function updateSidebarProfile() {
@@ -147,6 +152,10 @@ function clampN(v, lo, hi) {
 
 // --- panels ---
 
+function heroBackground(color) {
+  return `radial-gradient(120% 140% at 0% 0%, ${color}66, transparent 55%), radial-gradient(90% 120% at 100% 100%, rgba(242,107,29,.45), transparent 60%), linear-gradient(135deg, #3a2215, #1a110c)`;
+}
+
 function showPanel(name) {
   document.querySelectorAll(".panel").forEach((p) => {
     const on = p.id === `panel-${name}`;
@@ -165,77 +174,107 @@ document.querySelectorAll(".mod-card").forEach((t) =>
 document.querySelectorAll(".mnav-btn").forEach((t) =>
   t.addEventListener("click", () => showPanel(t.dataset.goto))
 );
-document.querySelectorAll(".home-ai-card, .home-qa-btn, #homeAvatarBtn").forEach((el) => {
-  if (el.dataset.goto) el.addEventListener("click", () => showPanel(el.dataset.goto));
-});
+$$("#panel-home [data-goto]").forEach((el) =>
+  el.addEventListener("click", () => showPanel(el.dataset.goto))
+);
 
 // --- mobile home panel ---
 
-const HRC_COLORS = ["hrc-c0","hrc-c1","hrc-c2","hrc-c3","hrc-c4","hrc-c5","hrc-c6"];
+let homeRecipes = [];
+
+async function fetchRecipesForHome() {
+  if (useLocalStore()) return JSON.parse(localStorage.getItem("xbloom.recipes") || "[]");
+  return (await api("/api/recipes").catch(() => ({ recipes: [] }))).recipes || [];
+}
+
+const recipeKind = (r) => ((r.cup_type || r.kind) === "tea" ? "tea" : "coffee");
+const asSpec = (r) => normalizeRecipe({ ...r, kind: recipeKind(r), steeps: r.steeps || (recipeKind(r) === "tea" ? r.pours : undefined) });
+
+function renderHomeStats(recipes) {
+  const tea = recipes.filter((r) => recipeKind(r) === "tea").length;
+  const coffee = recipes.length - tea;
+  const pct = (n) => (recipes.length ? `${Math.round((n / recipes.length) * 100)}%` : "0%");
+  const ratios = recipes.map((r) => Number(r.ratio)).filter((n) => n > 0);
+  const avg = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : 0;
+  $("#statTotal").textContent = recipes.length;
+  $("#statCoffee").textContent = coffee;
+  $("#statTea").textContent = tea;
+  $("#statRatio").textContent = avg ? `1:${avg.toFixed(1).replace(/\.0$/, "")}` : "—";
+  $("#statCoffeeBadge").textContent = pct(coffee);
+  $("#statTeaBadge").textContent = pct(tea);
+  $("#statTotalBadge").textContent = useLocalStore() ? "محلي" : "☁ XBloom";
+}
+
+function homeRow(r) {
+  const tea = recipeKind(r) === "tea";
+  const ml = Math.round((Number(r.dose_g) || 0) * (Number(r.ratio) || 0));
+  const color = escapeHtml(r.color || (tea ? "#4fae73" : "#f26b1d"));
+  return `<div class="hrow" data-recipe-id="${escapeHtml(String(r.id))}" role="button" tabindex="0">
+    <span class="hrow-av" style="background:radial-gradient(circle at 35% 30%,${color},rgba(0,0,0,.35))">${tea ? "🍵" : "☕"}</span>
+    <span class="hrow-txt"><b>${escapeHtml(r.name || "وصفة")}</b><small>${r.dose_g}g · ${ml}ml${tea ? "" : ` · طحن ${r.grind_size ?? "—"}`}</small></span>
+    <span class="hrow-tag ${tea ? "tea" : "coffee"}">${tea ? "شاي" : "قهوة"}</span>
+    ${tea ? "" : `<button class="hrow-brew" data-act="brew" type="button" aria-label="شغّل الآن">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l10-6.5z"/></svg></button>`}
+  </div>`;
+}
 
 async function populateHomeGrid() {
   const grid = $("#homeRecipeGrid");
   if (!grid) return;
-  try {
-    let recipes;
-    if (useLocalStore()) {
-      recipes = JSON.parse(localStorage.getItem("xbloom.recipes") || "[]");
-    } else {
-      ({ recipes } = await api("/api/recipes").catch(() => ({ recipes: [] })));
-    }
-    const top = recipes.slice(0, 6);
-    if (!top.length) {
-      grid.innerHTML = `<p class="muted small" style="grid-column:1/-1;text-align:center;padding:1.5rem 0">لا توجد وصفات بعد — ابدأ بالـ AI!</p>`;
-      return;
-    }
-    grid.innerHTML = top.map((r, i) => {
-      const isTea = (r.cup_type || r.kind) === "tea";
-      const total = Math.round((Number(r.dose_g) || 0) * (Number(r.ratio) || 0));
-      const color = HRC_COLORS[i % HRC_COLORS.length];
-      return `<button class="home-recipe-card ${color}" data-recipe-id="${r.id}" type="button">
-        <span class="hrc-icon">${isTea ? "🍵" : "☕"}</span>
-        <p class="hrc-name">${escapeHtml(r.name)}</p>
-        <p class="hrc-meta">${isTea ? "شاي" : "قهوة"} · ${r.dose_g}g · ${total}ml</p>
-        <button class="hrc-send-btn" data-recipe-id="${r.id}" data-act="send" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-        </button>
-      </button>`;
-    }).join("");
-  } catch (_) {
-    grid.innerHTML = "";
-  }
+  homeRecipes = await fetchRecipesForHome().catch(() => []);
+  renderHomeStats(homeRecipes);
+  grid.innerHTML = homeRecipes.length
+    ? homeRecipes.slice(0, 6).map(homeRow).join("")
+    : `<p class="muted small home-empty">لا توجد وصفات بعد — اسأل الـ AI فوق ☝️</p>`;
 }
 
-// Sync home avatar with session label
-function syncHomeAvatar() {
-  const letter = $("#homeAvatarLetter");
-  const label = $("#sessionLabel");
-  if (letter && label) letter.textContent = (label.textContent.trim()[0] || "؟");
+function syncHomeProfile(email) {
+  const name = settings.name || (email ? email.split("@")[0] : "") || "ضيف";
+  $("#homeName").textContent = name;
+  $("#homeEmail").textContent = email || "غير مسجّل";
+  $("#homeAiName").textContent = settings.name || (email ? name : "بك");
+  $("#homeAvatarLetter").textContent = (name[0] || "؟").toUpperCase();
 }
 
-// Tap on home recipe card → open in manual editor
-$("#homeRecipeGrid").addEventListener("click", async (e) => {
-  const sendBtn = e.target.closest("[data-act='send']");
-  if (sendBtn) {
-    e.stopPropagation();
-    const id = sendBtn.dataset.recipeId;
-    const recipes = useLocalStore()
-      ? JSON.parse(localStorage.getItem("xbloom.recipes") || "[]")
-      : (await api("/api/recipes").catch(() => ({ recipes: [] }))).recipes;
-    const r = recipes.find((x) => String(x.id) === String(id));
-    if (r) { state.preview = normalizeRecipe(r); await sendToDevice(); }
+$("#homeRecipeGrid").addEventListener("click", (e) => {
+  const row = e.target.closest("[data-recipe-id]");
+  if (!row) return;
+  const r = homeRecipes.find((x) => String(x.id) === row.dataset.recipeId);
+  if (!r) return;
+  if (e.target.closest("[data-act='brew']")) {
+    state.preview = asSpec(r);
+    brewOnMachine(state.preview);
     return;
   }
-  const card = e.target.closest("[data-recipe-id]");
-  if (card) {
-    const id = card.dataset.recipeId;
-    const recipes = useLocalStore()
-      ? JSON.parse(localStorage.getItem("xbloom.recipes") || "[]")
-      : (await api("/api/recipes").catch(() => ({ recipes: [] }))).recipes;
-    const r = recipes.find((x) => String(x.id) === String(id));
-    if (r) { fillManualForm(normalizeRecipe(r)); showPanel("manual"); }
-  }
+  fillManualForm(asSpec(r), r.id);
+  showPanel("manual");
 });
+
+$$(".ai-chip").forEach((chip) => chip.addEventListener("click", () => {
+  $$(".ai-chip").forEach((c) => c.classList.toggle("active", c === chip));
+  $("#homeAiInput").value = chip.dataset.prompt;
+  $("#homeAiInput").focus();
+}));
+
+$("#homeAiForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("#homeAiInput").value.trim() || $(".ai-chip.active")?.dataset.prompt || "";
+  if (!text) return;
+  showPanel("assistant");
+  $("#aiDescInput").value = text;
+  $("#aiBrewBtn").click();
+});
+
+{
+  const ready = !!window.XBBle?.supported();
+  const st = $("#homeLinkState");
+  st.textContent = ready ? "Bluetooth جاهز" : "افتح من Chrome";
+  st.classList.toggle("ok", ready);
+  $("#homeLinkCard").addEventListener("click", () => {
+    if (ready) toast("اختر وصفة قهوة واضغط ▶ لتشغيلها على الجهاز");
+    else $("#bleSetupModal").classList.remove("hidden");
+  });
+}
 
 // On mobile, default to home panel; on desktop keep manual
 if (window.innerWidth <= 767) {
@@ -249,7 +288,8 @@ function setHomeLogin(loggedIn, email) {
   if (!pill) return;
   pill.dataset.loggedIn = loggedIn ? "1" : "";
   pill.classList.toggle("on", !!loggedIn);
-  pill.textContent = loggedIn ? `✓ ${email || "متصل بحساب XBloom"}` : "دخول حساب XBloom";
+  pill.textContent = loggedIn ? "✓ متصل بحساب XBloom" : "دخول حساب XBloom";
+  syncHomeProfile(loggedIn ? email : null);
 }
 
 async function refreshSession() {
@@ -1103,7 +1143,7 @@ function syncManual() {
   const rb = $("#rpmBig"); if (rb) rb.textContent = tea ? "—" : manual.grind_rpm;
   const ratioEl = $("#ratioBig");
   if (ratioEl) ratioEl.textContent = tea ? (manual.dose_g ? (sum / manual.dose_g).toFixed(1) : "—") : manual.ratio;
-  $("#heroCard").style.background = `linear-gradient(135deg, ${manual.color}, ${manual.color}cc)`;
+  $("#heroCard").style.background = heroBackground(manual.color);
 
   document.querySelectorAll("#manualForm [data-gset]").forEach((c) => {
     const [k, v] = c.dataset.gset.split(":");
@@ -1202,7 +1242,7 @@ $("#grindRange").addEventListener("input", (e) => {
 
 $("#colorInput").addEventListener("input", (e) => {
   manual.color = e.target.value;
-  $("#heroCard").style.background = `linear-gradient(135deg, ${manual.color}, ${manual.color}cc)`;
+  $("#heroCard").style.background = heroBackground(manual.color);
   document.querySelectorAll(".swatch-btn").forEach((b) => b.classList.remove("active"));
 });
 
