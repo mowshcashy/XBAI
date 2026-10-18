@@ -592,6 +592,45 @@ textarea{resize:vertical;font-family:inherit}
 .btn-send-device{border:1px solid var(--accent);color:var(--accent)}
 .btn-send-device:hover{background:var(--accent-faint)}
 
+/* Brew Now button */
+.btn-brew{
+  background:linear-gradient(135deg,#e8611a,#c9420a);
+  border:none;color:#fff;font-weight:700;
+  box-shadow:0 4px 14px rgba(200,80,20,.4);
+}
+.btn-brew:hover{filter:brightness(1.1)}
+.btn-brew:disabled{opacity:.6}
+
+/* Brew progress modal */
+.brew-modal-box{min-width:min(420px,90vw);max-width:520px}
+.brew-modal-head{display:flex;align-items:center;gap:1rem;margin-bottom:1rem}
+.brew-modal-icon{
+  width:48px;height:48px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,#e8611a,#c9420a);
+  display:grid;place-items:center;
+}
+.brew-modal-icon svg{width:26px;height:26px;color:#fff}
+.brew-log{
+  background:var(--bg-deep,#07090d);border-radius:var(--radius-sm);
+  padding:.75rem 1rem;font-family:monospace;font-size:.78rem;
+  max-height:180px;overflow-y:auto;line-height:1.6;color:#a8c8a8;
+  min-height:60px;white-space:pre-wrap;word-break:break-all;
+}
+
+/* BLE setup modal */
+.ble-setup-body{display:flex;flex-direction:column;gap:.7rem;padding:.3rem 0}
+.ble-setup-step{margin:0;font-size:.9rem;display:flex;align-items:flex-start;gap:.6rem;line-height:1.5}
+.ble-step-num{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:24px;height:24px;border-radius:50%;background:var(--accent);
+  color:var(--brand-ink,#fff);font-size:.78rem;font-weight:700;flex-shrink:0;margin-top:.05rem;
+}
+.ble-code{
+  background:var(--bg-deep,#07090d);border-radius:var(--radius-sm);
+  padding:.45rem .85rem;font-family:monospace;font-size:.82rem;
+  color:#6af86a;margin:.1rem 0;overflow-x:auto;
+}
+
 /* ── Send-to-device modal ─────────────────────── */
 .send-modal-body{display:flex;flex-direction:column;align-items:center;gap:1rem;padding:.5rem 0 .2rem}
 .send-success-icon{width:56px;height:56px;border-radius:50%;background:var(--accent-faint);display:grid;place-items:center}

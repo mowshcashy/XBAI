@@ -739,11 +739,144 @@ $("#saveAssisted").addEventListener("click", async () => {
   if (ok) showPanel("recipes");
 });
 
+$("#brewNowBtn").addEventListener("click", () => brewOnMachine(state.preview));
 $("#sendToDevice").addEventListener("click", sendToDevice);
 $("#sendModalClose").addEventListener("click", () => $("#sendModal").classList.add("hidden"));
 $("#sendModal").addEventListener("click", (e) => {
   if (e.target.id === "sendModal") $("#sendModal").classList.add("hidden");
 });
+
+// ── Brew on machine (BLE via xbloom-ble CLI) ──────────────────────────────
+
+let _brewAbort = null; // holds the SSE EventSource so we can close it
+
+async function brewOnMachine(spec) {
+  if (!spec) { toast("لا توجد وصفة", "bad"); return; }
+
+  if (IS_STATIC) {
+    toast("التحضير المباشر يلزم الخادم المحلي (localhost:8789)", "bad");
+    return;
+  }
+
+  // Quick install-check first
+  let installed = false;
+  try {
+    const s = await api("/api/ble/status");
+    installed = s.installed;
+  } catch {}
+
+  if (!installed) {
+    $("#bleSetupModal").classList.remove("hidden");
+    return;
+  }
+
+  // Open progress modal
+  const modal    = $("#brewModal");
+  const log      = $("#brewLog");
+  const title    = $("#brewModalTitle");
+  const subtitle = $("#brewModalSubtitle");
+  const closeBtn = $("#brewModalClose");
+  const cancelBtn = $("#brewModalCancel");
+  const icon     = $("#brewModalIcon");
+
+  log.textContent = "";
+  title.textContent = "جاري التحضير…";
+  subtitle.textContent = "تواصل مع الجهاز عبر Bluetooth";
+  closeBtn.classList.add("hidden");
+  cancelBtn.classList.remove("hidden");
+  icon.style.animation = "brew-pulse 1.4s ease-in-out infinite";
+  modal.classList.remove("hidden");
+
+  const append = (line) => {
+    log.textContent += line + "\n";
+    log.scrollTop = log.scrollHeight;
+  };
+
+  const es = new EventSource(`/api/brew?_t=${Date.now()}`, { withCredentials: false });
+  // We POST the body via fetch-then-stream isn't natively supported with EventSource.
+  // So POST the recipe first to get a sessionId, then stream from that.
+  // Simpler: close the EventSource approach and use fetch + ReadableStream instead.
+  es.close();
+
+  // Use fetch + ReadableStream for SSE (allows POST body)
+  const controller = new AbortController();
+  _brewAbort = controller;
+
+  try {
+    const resp = await fetch("/api/brew", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(spec),
+      signal: controller.signal,
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${resp.status}`);
+    }
+
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        let msg;
+        try { msg = JSON.parse(line.slice(5).trim()); } catch { continue; }
+        if (msg.type === "log") {
+          append(msg.line);
+        } else if (msg.type === "done") {
+          title.textContent = "تم التحضير! ☕";
+          subtitle.textContent = "الوصفة جارٍ تنفيذها الآن";
+          icon.style.animation = "";
+          cancelBtn.classList.add("hidden");
+          closeBtn.classList.remove("hidden");
+        } else if (msg.type === "error") {
+          throw new Error(msg.message);
+        }
+      }
+    }
+  } catch (err) {
+    if (err.name === "AbortError") {
+      title.textContent = "تم الإلغاء";
+      subtitle.textContent = "";
+      icon.style.animation = "";
+    } else {
+      // Check if this is the "not installed" error
+      if ((err.message || "").includes("غير مثبّت") || (err.message || "").includes("xbloom")) {
+        modal.classList.add("hidden");
+        $("#bleSetupModal").classList.remove("hidden");
+        return;
+      }
+      title.textContent = "خطأ في التحضير";
+      subtitle.textContent = err.message || "تأكد من تشغيل الجهاز وإغلاق تطبيق الهاتف";
+      append(`\n❌ ${err.message}`);
+      icon.style.animation = "";
+    }
+    cancelBtn.classList.add("hidden");
+    closeBtn.classList.remove("hidden");
+  } finally {
+    _brewAbort = null;
+  }
+}
+
+$("#brewModalCancel").addEventListener("click", () => {
+  if (_brewAbort) { _brewAbort.abort(); _brewAbort = null; }
+  $("#brewModal").classList.add("hidden");
+});
+$("#brewModalClose").addEventListener("click", () => $("#brewModal").classList.add("hidden"));
+$("#brewModal").addEventListener("click", (e) => {
+  if (e.target.id === "brewModal" && !_brewAbort) $("#brewModal").classList.add("hidden");
+});
+$("#bleSetupClose").addEventListener("click", () => $("#bleSetupModal").classList.add("hidden"));
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function sendToDevice() {
   if (!state.preview) return;

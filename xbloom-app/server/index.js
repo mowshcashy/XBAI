@@ -6,6 +6,7 @@ const express = require("express");
 const path = require("node:path");
 
 const xbloom = require("./xbloom");
+const brew   = require("./brew");
 const ollama = require("./ollama"); // VISION_MODELS exposed for /api/assist
 const openrouter = require("./openrouter");
 const store = require("./store");
@@ -73,6 +74,40 @@ app.put("/api/recipes/:id", route(async (req, res) => {
 app.delete("/api/recipes/:id", route(async (req, res) => {
   res.json(await xbloom.deleteRecipe(requireCreds(), req.params.id));
 }));
+
+// --- BLE brew ---
+
+app.get("/api/ble/status", route(async (req, res) => {
+  const installed = await brew.checkInstalled();
+  res.json({ installed });
+}));
+
+// SSE stream: POST /api/brew
+// Body: recipe spec (same shape as /api/recipes).
+// Streams log lines then {type:"done"} or {type:"error",...}.
+app.post("/api/brew", (req, res) => {
+  const spec = req.body || {};
+  if (!spec.name) return res.status(400).json({ error: "Recipe name required." });
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+
+  const { address } = req.query;
+  brew.brewNow(spec, {
+    onChunk: (line) => send({ type: "log", line }),
+    address: address || undefined,
+  }).then(() => {
+    send({ type: "done" });
+    res.end();
+  }).catch((err) => {
+    send({ type: "error", message: err.message || String(err) });
+    res.end();
+  });
+});
 
 app.post("/api/import", route(async (req, res) => {
   const { share_url } = req.body || {};
