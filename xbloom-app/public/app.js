@@ -327,13 +327,12 @@ async function loadModels() {
   }
 }
 $("#refreshModels").addEventListener("click", loadModels);
-// --- image attach (coffee bag photo) ---
-let attachedImage = null;
 
-function clearAttachment() {
-  attachedImage = null;
-  $("#attachPreview").classList.add("hidden");
-}
+// ============================================================
+// AI FLOW — 3-state: input → brewing → result
+// ============================================================
+
+let aiImage = null; // base64 image attached to the current brew request
 
 function fileToDataURL(file) {
   return new Promise((resolve, reject) => {
@@ -344,7 +343,6 @@ function fileToDataURL(file) {
   });
 }
 
-// Keep the payload small: cap the long edge at 1280px and re-encode as JPEG.
 function downscaleImage(dataUrl, max = 1280) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -362,71 +360,159 @@ function downscaleImage(dataUrl, max = 1280) {
   });
 }
 
-$("#attachBtn").addEventListener("click", () => $("#attachFile").click());
-$("#attachFile").addEventListener("change", async (e) => {
+// Wire up image upload button in the hero card
+$("#aiImgFile").addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   e.target.value = "";
   if (!file) return;
   if (!file.type.startsWith("image/")) return toast("اختر صورة", "bad");
   try {
     const raw = await fileToDataURL(file);
-    attachedImage = await downscaleImage(raw);
-    $("#attachThumb").src = attachedImage;
-    $("#attachPreview").classList.remove("hidden");
-    $("#chatText").focus();
-  } catch {
-    toast("تعذّر قراءة الصورة", "bad");
+    aiImage = await downscaleImage(raw);
+    $("#aiImgThumb").src = aiImage;
+    $("#aiImgPreview").classList.remove("hidden");
+  } catch { toast("تعذّر قراءة الصورة", "bad"); }
+});
+$("#aiImgRemove")?.addEventListener("click", () => {
+  aiImage = null;
+  $("#aiImgPreview").classList.add("hidden");
+  $("#aiImgThumb").src = "";
+});
+
+// ── state switching ──
+function showAiState(name) {
+  ["aiStateInput", "aiStateBrewing", "aiStateResult"].forEach((id) => {
+    const el = $(`#${id}`);
+    if (el) el.classList.toggle("hidden", id !== name);
+  });
+}
+
+// ── brewing stage labels ──
+const BREW_STAGES = [
+  "جاري تحليل المحصول…",
+  "أحسب النسبة المثالية…",
+  "أضبط درجة الطحن…",
+  "أختار درجة الحرارة…",
+  "أرسم تدفق الصبّ…",
+  "أنهي تصميم الوصفة…",
+];
+
+function startBrewAnimation() {
+  let idx = 0;
+  const label = $("#brewLabel");
+  const steps = $$("[data-s]");
+  function advance() {
+    if (label) { label.style.opacity = 0; setTimeout(() => { label.textContent = BREW_STAGES[idx % BREW_STAGES.length]; label.style.opacity = 1; }, 200); }
+    steps.forEach((s) => s.classList.toggle("active", +s.dataset.s === idx % steps.length));
+    idx++;
+  }
+  advance();
+  return setInterval(advance, 1600);
+}
+
+// ── try again ──
+$("#aiTryAgain")?.addEventListener("click", () => {
+  showAiState("aiStateInput");
+  state.preview = null;
+  $("#previewBody").innerHTML = '<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M17 8h1a3 3 0 1 1 0 6h-1M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg><p class="muted">لا توجد وصفة بعد.</p></div>';
+  $("#previewBadge").classList.add("hidden");
+  $("#previewActions").classList.add("hidden");
+});
+
+// ── main brew handler ──
+$("#aiBrewBtn").addEventListener("click", async () => {
+  const text = $("#aiDescInput").value.trim();
+  const image = aiImage;
+  if (!text && !image) return toast("اكتب وصف المحصول أو ارفع صورة", "bad");
+
+  showAiState("aiStateBrewing");
+  const animTimer = startBrewAnimation();
+
+  state.history = [];
+  state.history.push({ role: "user", content: text || "(attached coffee bag image)" });
+
+  let fullText = "", gotRecipe = null, gotError = null;
+  try {
+    if (IS_STATIC) {
+      const liveEl = { querySelector: () => null }; // dummy — not needed for new UI
+      await runAssistStatic(
+        text, image, liveEl, document.createElement("span"),
+        (t) => { fullText += t; },
+        (r) => { gotRecipe = r; },
+        (e) => { gotError = e; }
+      );
+    } else {
+      const resp = await fetch("/api/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          model: $("#modelSelect").value || undefined,
+          provider: state.provider,
+          history: [],
+          image: image || undefined,
+        }),
+      });
+      if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n"); buf = lines.pop();
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let ev;
+          try { ev = JSON.parse(line); } catch { continue; }
+          if (ev.type === "token") fullText += ev.data;
+          else if (ev.type === "recipe") gotRecipe = ev.recipe;
+          else if (ev.type === "error") gotError = ev.error;
+        }
+      }
+    }
+  } catch (err) {
+    gotError = String(err.message || err);
+  } finally {
+    clearInterval(animTimer);
+  }
+
+  // Show result state
+  showAiState("aiStateResult");
+  const errBox = $("#resultErrBox");
+
+  if (gotError) {
+    if (errBox) { errBox.textContent = `تعذّر التوليد: ${gotError}`; errBox.classList.remove("hidden"); }
+    if ($("#resultName")) $("#resultName").textContent = "حدث خطأ";
+    if ($("#resultNotes")) $("#resultNotes").textContent = "";
+    return;
+  }
+  if (errBox) errBox.classList.add("hidden");
+
+  if (gotRecipe) {
+    state.preview = gotRecipe;
+    state.history.push({ role: "assistant", content: fullText });
+    if ($("#resultName")) $("#resultName").textContent = gotRecipe.name || "وصفة جديدة";
+    if ($("#resultNotes")) $("#resultNotes").textContent = gotRecipe.notes || "";
+    showRecipePreview(gotRecipe);
+    $("#previewBadge").classList.remove("hidden");
+    $("#previewActions").classList.add("hidden"); // actions are in result-acts now
+  } else {
+    if ($("#resultName")) $("#resultName").textContent = "لم تُعَد وصفة JSON";
+    if ($("#resultNotes")) $("#resultNotes").textContent = fullText.slice(0, 600);
   }
 });
-$("#attachRemove").addEventListener("click", clearAttachment);
 
-// --- assistant (streaming) ---
+// ── legacy compat stubs (other code references these) ──
+function addMsg() {}
+function addTypingMsg() { return document.createElement("div"); }
+function setMsgText() {}
+let attachedImage = null;
+function clearAttachment() { aiImage = null; }
 
-function renderMsgContent(text) {
-  return text.split("\n").map((l) => `<p>${escapeHtml(l) || "&nbsp;"}</p>`).join("");
-}
-
-function addMsg(role, text) {
-  const div = document.createElement("div");
-  div.className = `msg ${role}`;
-  if (role === "assistant") {
-    div.innerHTML = `<button class="msg-copy" title="نسخ" type="button">📋</button>${renderMsgContent(text)}`;
-    div.querySelector(".msg-copy").addEventListener("click", () => {
-      navigator.clipboard?.writeText(div.innerText.replace(/^📋\s*/, "").trim());
-      toast("تم النسخ");
-    });
-  } else {
-    div.innerHTML = renderMsgContent(text);
-  }
-  $("#chatLog").appendChild(div);
-  $("#chatLog").scrollTop = $("#chatLog").scrollHeight;
-  return div;
-}
-
-function addTypingMsg() {
-  const div = document.createElement("div");
-  div.className = "msg assistant";
-  div.innerHTML = `<button class="msg-copy" style="display:none" type="button">📋</button><p><span class="typing-dots"><span></span><span></span><span></span></span></p>`;
-  $("#chatLog").appendChild(div);
-  $("#chatLog").scrollTop = $("#chatLog").scrollHeight;
-  return div;
-}
-
-function setMsgText(el, text) {
-  const copyBtn = el.querySelector(".msg-copy");
-  el.innerHTML = `${copyBtn ? copyBtn.outerHTML : ""}${renderMsgContent(text)}`;
-  if (el.classList.contains("assistant")) {
-    const newCopy = el.querySelector(".msg-copy");
-    if (newCopy) {
-      newCopy.style.display = "";
-      newCopy.addEventListener("click", () => {
-        navigator.clipboard?.writeText(el.innerText.replace(/^📋\s*/, "").trim());
-        toast("تم النسخ");
-      });
-    }
-  }
-  $("#chatLog").scrollTop = $("#chatLog").scrollHeight;
-}
+// legacy form submit (hidden but referenced) — no-op
+$("#chatForm").addEventListener("submit", (e) => e.preventDefault());
 
 $("#chatForm").addEventListener("submit", async (e) => {
   e.preventDefault();

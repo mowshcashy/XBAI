@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Overpass:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=10" />
+<link rel="stylesheet" href="styles.css?v=11" />
 <meta name="theme-color" content="#0b0d12" />
 <link rel="manifest" href="manifest.webmanifest" />
 </head>
@@ -283,54 +283,114 @@
         </div>
       </div>
 
-      <div class="split">
-        <div class="card chat-card">
-          <div id="chatLog" class="chat-log">
-            <div class="msg assistant">
-              <p>أهلاً! أنا مساعد التحضير — تعلمت من سكل القهوة الاحترافي ☕</p>
-              <p class="muted small">• أرفق صورة كيس القهوة 📷 وأقرأ التحميص والمعالجة والمنشأ</p>
-              <p class="muted small">• قل لي: «طلعت حامضة» أو «مرة» — أشخّص وأصلّح الوصفة</p>
-              <p class="muted small">• سمة الحبة باسمها وأحفظها — المرة الجاية أتذكرها</p>
+      <!-- ═══ AI FLOW (3 states) ═══ -->
+      <div class="ai-flow">
+
+        <!-- STATE 0 · INPUT -->
+        <div id="aiStateInput" class="ai-state">
+          <div class="ai-hero-card">
+            <div class="ai-hero-top">
+              <div class="ai-hero-emblem">
+                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M10 18h28v12a9 9 0 0 1-9 9H19a9 9 0 0 1-9-9V18z" stroke-linejoin="round"/>
+                  <path d="M38 22h2a5 5 0 0 1 0 10h-2"/>
+                  <line x1="16" y1="9" x2="16" y2="15"/><line x1="24" y1="7" x2="24" y2="15"/><line x1="32" y1="9" x2="32" y2="15"/>
+                </svg>
+              </div>
+              <h2 class="ai-hero-title">صف محصولك</h2>
+              <p class="ai-hero-sub">اكتب نوع القهوة أو الشاي، المنشأ، التحميص، المعالجة…<br>أو ارفع صورة الكيس مباشرةً وسأقرأها</p>
+            </div>
+            <div id="aiImgPreview" class="ai-img-preview hidden">
+              <img id="aiImgThumb" alt="صورة المحصول" />
+              <button id="aiImgRemove" class="attach-remove" type="button">✕</button>
+            </div>
+            <textarea id="aiDescInput" class="ai-desc-input" rows="4"
+              placeholder="مثال: قهوة إثيوبية يرغاشيفي، تحميص فاتح، معالجة طبيعية، أريد أبرز النكهات الفاكهية…"></textarea>
+            <div class="ai-hero-btns">
+              <label class="btn btn-ghost-soft ai-upload-lbl" for="aiImgFile">
+                <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                ارفع صورة الكيس
+              </label>
+              <input type="file" id="aiImgFile" accept="image/*" class="hidden" />
+              <button type="button" id="aiBrewBtn" class="btn btn-accent ai-brew-btn">
+                احضر لي وصفة
+                <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
             </div>
           </div>
-          <div id="attachPreview" class="attach-preview hidden">
-            <img id="attachThumb" alt="الصورة المرفقة" />
-            <button type="button" id="attachRemove" class="attach-remove" title="إزالة الصورة">✕</button>
-          </div>
-          <form id="chatForm" class="chat-input">
-            <button type="button" id="attachBtn" class="icon-btn attach-btn" title="إرفاق صورة كيس القهوة">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            </button>
-            <textarea id="chatText" rows="2" placeholder="اكتب وصف القهوة… أو أرفق صورة الكيس 📷"></textarea>
-            <button type="submit" id="sendBtn" class="send-btn" title="إرسال">
-              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-            </button>
-          </form>
-          <input type="file" id="attachFile" accept="image/*" class="hidden" />
         </div>
 
-        <div class="preview-card">
-          <div class="card-head">
-            <h3>معاينة الوصفة</h3>
-            <span id="previewBadge" class="badge hidden">مولّدة</span>
-          </div>
-          <div id="previewBody" class="preview-body">
-            <div class="empty">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M17 8h1a3 3 0 1 1 0 6h-1M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>
-              <p class="muted">لا توجد وصفة بعد.</p>
+        <!-- STATE 1 · BREWING -->
+        <div id="aiStateBrewing" class="ai-state hidden">
+          <div class="brew-scene">
+            <div class="brew-rings">
+              <div class="brew-r brew-r1"></div>
+              <div class="brew-r brew-r2"></div>
+              <div class="brew-r brew-r3"></div>
+              <div class="brew-core">
+                <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <path d="M6 10h20v10a7 7 0 0 1-7 7H13a7 7 0 0 1-7-7V10z" stroke-linejoin="round"/>
+                  <path d="M26 14h1a3 3 0 0 1 0 6h-1"/>
+                  <line x1="11" y1="5" x2="11" y2="9"/><line x1="16" y1="4" x2="16" y2="9"/><line x1="21" y1="5" x2="21" y2="9"/>
+                </svg>
+              </div>
+            </div>
+            <p class="brew-label" id="brewLabel">جاري تحليل المحصول…</p>
+            <div class="brew-steps-row">
+              <span class="brew-step" data-s="0">تحليل</span>
+              <span class="brew-sep">·</span>
+              <span class="brew-step" data-s="1">نسب</span>
+              <span class="brew-sep">·</span>
+              <span class="brew-step" data-s="2">طحن</span>
+              <span class="brew-sep">·</span>
+              <span class="brew-step" data-s="3">حرارة</span>
+              <span class="brew-sep">·</span>
+              <span class="brew-step" data-s="4">تدفق</span>
             </div>
           </div>
-          <div id="previewActions" class="preview-actions hidden">
-            <button id="sendToManual" class="btn btn-ghost-soft" type="button">
-              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-              تعديل يدوي
-            </button>
-            <button id="saveAssisted" class="btn btn-accent" type="button">
-              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-              حفظ في التطبيق
-            </button>
+        </div>
+
+        <!-- STATE 2 · RESULT -->
+        <div id="aiStateResult" class="ai-state hidden">
+          <div class="split">
+            <div class="card result-left">
+              <div class="result-top">
+                <h3 id="resultName" class="result-name">الوصفة</h3>
+                <p id="resultNotes" class="result-notes muted small"></p>
+              </div>
+              <div id="resultErrBox" class="result-err hidden"></div>
+              <div class="result-acts">
+                <button type="button" class="btn btn-ghost-soft" id="aiTryAgain">↩ تجربة أخرى</button>
+                <button id="sendToManual" class="btn btn-ghost-soft" type="button">
+                  <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                  تعديل يدوي
+                </button>
+                <button id="saveAssisted" class="btn btn-accent" type="button">
+                  <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                  حفظ في التطبيق
+                </button>
+              </div>
+            </div>
+            <div class="preview-card">
+              <div class="card-head">
+                <h3>معاينة الوصفة</h3>
+                <span id="previewBadge" class="badge hidden">مولّدة</span>
+              </div>
+              <div id="previewBody" class="preview-body">
+                <div class="empty">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M17 8h1a3 3 0 1 1 0 6h-1M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>
+                  <p class="muted">لا توجد وصفة بعد.</p>
+                </div>
+              </div>
+              <div id="previewActions" class="preview-actions hidden"></div>
+            </div>
           </div>
         </div>
+
+        <!-- hidden compat elements (JS still reads these) -->
+        <div id="chatLog" class="hidden"></div>
+        <form id="chatForm" class="hidden"><textarea id="chatText"></textarea><button id="sendBtn" type="submit"></button></form>
+        <input type="file" id="attachFile" accept="image/*" class="hidden" />
       </div>
     </section>
 
@@ -523,6 +583,6 @@
   </div>
 </div>
 
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>
