@@ -91,7 +91,7 @@
 
   const authBase = (c) => ({
     interfaceVersion: 20240918, skey: "testskey", phoneType: "Android",
-    memberId: c.memberId, clientType: 2, languageType: 1, token: c.token,
+    memberId: c.memberId, clientType: 2, languageType: 0, token: c.token,
   });
 
   const clamp = (v, lo, hi, fb) => { const n = Number(v); return Number.isFinite(n) ? Math.min(Math.max(n, lo), hi) : fb; };
@@ -121,7 +121,7 @@
   async function login(email, password) {
     const resp = check(await post("tMemberLogin.thtml", {
       interfaceVersion: 20240918, skey: "testskey", clientType: 2,
-      phoneType: "Android", languageType: 1, email, password,
+      phoneType: "Android", languageType: 0, email, password,
     }));
     if (!resp.member?.tableId || !resp.token) throw new Error("رد تسجيل الدخول ناقص");
     const creds = { memberId: resp.member.tableId, token: resp.token, email };

@@ -256,10 +256,22 @@ $$(".ai-chip").forEach((chip) => chip.addEventListener("click", () => {
   $("#homeAiInput").focus();
 }));
 
+$("#homeImgFile").addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  if (!file.type.startsWith("image/")) return toast("اختر صورة", "bad");
+  try {
+    setAiImage(await downscaleImage(await fileToDataURL(file)));
+  } catch { toast("تعذّر قراءة الصورة", "bad"); }
+});
+$("#homeImgRemove").addEventListener("click", () => setAiImage(null));
+
 $("#homeAiForm").addEventListener("submit", (e) => {
   e.preventDefault();
-  const text = $("#homeAiInput").value.trim() || $(".ai-chip.active")?.dataset.prompt || "";
-  if (!text) return;
+  // With a photo attached, the typed text is optional — the bag label speaks for itself
+  const text = $("#homeAiInput").value.trim() || (aiImage ? "" : $(".ai-chip.active")?.dataset.prompt || "");
+  if (!text && !aiImage) return;
   showPanel("assistant");
   $("#aiDescInput").value = text;
   $("#aiBrewBtn").click();
@@ -319,31 +331,90 @@ async function refreshSession() {
   }
 }
 
-$("#loginBtn").addEventListener("click", () => $("#loginModal").classList.remove("hidden"));
-$("#loginCancel").addEventListener("click", () => $("#loginModal").classList.add("hidden"));
+// --- one XBloom login for everything ---
+// Any action that needs the account calls requireLogin(retry): the login sheet opens once,
+// and after a successful sign-in the interrupted action (save, send…) runs automatically.
+
+let afterLogin = null;
+
+const isAuthError = (err) => err?.status === 401 || /not logged in|انتهت جلسة/i.test(err?.message || "");
+
+function friendlyLoginError(msg) {
+  const m = String(msg || "");
+  if (/not (yet )?registered|not exist|no such/i.test(m)) return "هذا البريد غير مسجّل في XBloom. تأكد من البريد اللي تستخدمه في تطبيق XBloom.";
+  if (/password|incorrect|wrong|mismatch/i.test(m)) return "كلمة المرور غير صحيحة.";
+  if (/fetch failed|network|ENOTFOUND|ECONN|timeout/i.test(m)) return "تعذّر الوصول لخادم XBloom — تأكد من الإنترنت.";
+  return m || "تعذّر تسجيل الدخول.";
+}
+
+function openLogin(reason, then) {
+  afterLogin = then || null;
+  $("#loginReason").textContent = reason || "";
+  $("#loginReason").classList.toggle("hidden", !reason);
+  $("#loginError").classList.add("hidden");
+  $("#loginModal").classList.remove("hidden");
+  setTimeout(() => $("#loginForm [name=email]")?.focus(), 50);
+}
+
+function closeLogin() {
+  afterLogin = null;
+  $("#loginModal").classList.add("hidden");
+}
+
+function requireLogin(then) {
+  openLogin("سجّل دخولك بحساب XBloom مرة وحدة — بعدها كل وصفة تسويها تنحفظ في حسابك وتوصل لتطبيق XBloom مباشرة.", then);
+}
+
+// Recipes saved in this browser before signing in get moved into the account.
+async function syncLocalRecipes() {
+  let local;
+  try { local = JSON.parse(localStorage.getItem("xbloom.recipes") || "[]"); } catch { return 0; }
+  if (!local.length) return 0;
+  const left = [];
+  let moved = 0;
+  for (const r of local) {
+    const { id, cup_type, share_link, ...spec } = r;
+    try { await api("/api/recipes", { method: "POST", body: JSON.stringify({ ...spec, kind: spec.kind || cup_type }) }); moved++; }
+    catch { left.push(r); }
+  }
+  localStorage.setItem("xbloom.recipes", JSON.stringify(left));
+  return moved;
+}
+
+$("#loginBtn").addEventListener("click", () => openLogin());
+$("#loginCancel").addEventListener("click", closeLogin);
 $("#loginModal").addEventListener("click", (e) => {
-  if (e.target.id === "loginModal") $("#loginModal").classList.add("hidden");
+  if (e.target.id === "loginModal") closeLogin();
 });
 
 $("#loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  const btn = e.target.querySelector(".btn-accent");
+  const btn = $("#loginSubmit");
+  const errEl = $("#loginError");
+  errEl.classList.add("hidden");
   btn.disabled = true;
+  btn.textContent = "جاري الدخول…";
   try {
     await api("/api/login", {
       method: "POST",
-      body: JSON.stringify({ email: fd.get("email"), password: fd.get("password") }),
+      body: JSON.stringify({ email: String(fd.get("email")).trim(), password: fd.get("password") }),
     });
-    $("#loginModal").classList.add("hidden");
+    const next = afterLogin;
+    closeLogin();
     e.target.reset();
-    toast("تم تسجيل الدخول");
     await refreshSession();
+    const moved = await syncLocalRecipes();
+    toast(moved ? `تم تسجيل الدخول ✓ ونُقلت ${moved} وصفة لحسابك` : "تم تسجيل الدخول ✓ — وصفاتك الحين مربوطة بحسابك");
     if ($("#panel-home")?.classList.contains("active")) populateHomeGrid();
+    if ($("#panel-recipes")?.classList.contains("active")) loadRecipes();
+    if (next) await next();
   } catch (err) {
-    toast(err.message, "bad");
+    errEl.textContent = friendlyLoginError(err.message);
+    errEl.classList.remove("hidden");
   } finally {
     btn.disabled = false;
+    btn.textContent = "دخول";
   }
 });
 
@@ -360,7 +431,7 @@ $("#homeLoginBtn").addEventListener("click", () => {
   if ($("#homeLoginBtn").dataset.loggedIn === "1") {
     if (confirm("تسجيل الخروج من حساب XBloom؟")) logout();
   } else {
-    $("#loginModal").classList.remove("hidden");
+    requireLogin();
   }
 });
 
@@ -468,11 +539,11 @@ async function loadModels() {
           sel.innerHTML = '<option value="">Ollama غير متاح — تحقق من الرابط في الإعدادات وفعّل CORS</option>';
         }
       } else {
-        const { models } = await api("/api/ollama/models");
+        const { models, default: def } = await api("/api/ollama/models");
         if (!models.length) { sel.innerHTML = '<option value="">لا توجد موديلات</option>'; return; }
         const saved = localStorage.getItem(savedKey);
-        sel.innerHTML = models.map((m) => `<option value="${m}">${m}</option>`).join("");
-        if (saved && models.includes(saved)) sel.value = saved;
+        sel.innerHTML = models.map((m) => `<option value="${m}">${m}${m === def ? " ⭐ أساسي · رؤية" : ""}</option>`).join("");
+        sel.value = saved && models.includes(saved) ? saved : (def && models.includes(def) ? def : models[0]);
         sel.onchange = () => localStorage.setItem(savedKey, sel.value);
       }
     }
@@ -516,6 +587,15 @@ function downscaleImage(dataUrl, max = 1280) {
   });
 }
 
+// Keep the attached image in sync across the AI hero card and the home ask box
+function setAiImage(dataUrl) {
+  aiImage = dataUrl || null;
+  for (const [thumb, box] of [["#aiImgThumb", "#aiImgPreview"], ["#homeImgThumb", "#homeImgPreview"]]) {
+    $(thumb).src = aiImage || "";
+    $(box).classList.toggle("hidden", !aiImage);
+  }
+}
+
 // Wire up image upload button in the hero card
 $("#aiImgFile").addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
@@ -523,17 +603,32 @@ $("#aiImgFile").addEventListener("change", async (e) => {
   if (!file) return;
   if (!file.type.startsWith("image/")) return toast("اختر صورة", "bad");
   try {
-    const raw = await fileToDataURL(file);
-    aiImage = await downscaleImage(raw);
-    $("#aiImgThumb").src = aiImage;
-    $("#aiImgPreview").classList.remove("hidden");
+    setAiImage(await downscaleImage(await fileToDataURL(file)));
   } catch { toast("تعذّر قراءة الصورة", "bad"); }
 });
-$("#aiImgRemove")?.addEventListener("click", () => {
-  aiImage = null;
-  $("#aiImgPreview").classList.add("hidden");
-  $("#aiImgThumb").src = "";
-});
+$("#aiImgRemove")?.addEventListener("click", () => setAiImage(null));
+
+$$(".ai-suggest-chip").forEach((chip) => chip.addEventListener("click", () => {
+  $("#aiDescInput").value = chip.dataset.prompt;
+  $("#aiDescInput").focus();
+}));
+
+// Drop a bag photo straight onto the composer
+{
+  const box = $("#aiComposer");
+  box.addEventListener("dragover", (e) => { e.preventDefault(); box.classList.add("dragover"); });
+  box.addEventListener("dragleave", (e) => { if (!box.contains(e.relatedTarget)) box.classList.remove("dragover"); });
+  box.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    box.classList.remove("dragover");
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return toast("اختر صورة", "bad");
+    try {
+      setAiImage(await downscaleImage(await fileToDataURL(file)));
+    } catch { toast("تعذّر قراءة الصورة", "bad"); }
+  });
+}
 
 // ── state switching ──
 function showAiState(name) {
@@ -986,9 +1081,9 @@ async function sendToDevice() {
     }
     $("#sendModal").classList.remove("hidden");
   } catch (err) {
-    if (err.status === 401 || (err.message || "").toLowerCase().includes("not logged in")) {
-      toast("يجب تسجيل الدخول أولاً — استخدم زر «دخول XBloom»", "bad");
-      $("#loginModal")?.classList.remove("hidden");
+    if (isAuthError(err)) {
+      await refreshSession();
+      requireLogin(sendToDevice);
     } else {
       toast(err.message || "تعذّر الإرسال للجهاز", "bad");
     }
@@ -1011,9 +1106,9 @@ async function saveRecipe(spec) {
     toast(`تم حفظ الوصفة ✓`);
     return true;
   } catch (err) {
-    if (err.status === 401 || (err.message || "").toLowerCase().includes("not logged in")) {
-      toast("يجب تسجيل الدخول أولاً — استخدم زر «دخول XBloom»", "bad");
-      $("#loginModal")?.classList.remove("hidden");
+    if (isAuthError(err)) {
+      await refreshSession();
+      requireLogin(async () => { if (await saveRecipe(spec)) showPanel("recipes"); });
     } else {
       toast(err.message || "تعذّر الحفظ", "bad");
     }
@@ -1059,7 +1154,7 @@ function defaultSteps(kind) {
 
 function setKindFlags() {
   const tea = manual.kind === "tea";
-  $$(".seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.kind === manual.kind));
+  $$(".seg-btn[data-kind]").forEach((b) => b.classList.toggle("active", b.dataset.kind === manual.kind));
   $$("[data-coffee-only]").forEach((el) => el.classList.toggle("hidden", tea));
   $$("[data-tea-only]").forEach((el) => el.classList.toggle("hidden", !tea));
   $("#stepsTitle").innerHTML = (tea ? "النقعات" : "الصبات") + ` <span class="steps-count" id="stepsCount">${manual.steps.length}</span>`;
@@ -1322,9 +1417,13 @@ function buildSpec() {
   return spec;
 }
 
-$("#saveManual").addEventListener("click", async () => {
+async function saveManualRecipe() {
   if (!manual.steps.length) return toast("أضف خطوة واحدة على الأقل", "bad");
   const spec = buildSpec();
+  if (useLocalStore()) {
+    if (await saveRecipe(spec)) showPanel("recipes");
+    return;
+  }
   try {
     if (manual.editingId) {
       // update the existing cloud recipe in place
@@ -1337,13 +1436,19 @@ $("#saveManual").addEventListener("click", async () => {
     manual.editingId = null;
     showPanel("recipes");
   } catch (err) {
-    toast(err.message, "bad");
+    if (isAuthError(err)) {
+      await refreshSession();
+      requireLogin(saveManualRecipe);
+    } else {
+      toast(err.message, "bad");
+    }
   }
-});
+}
+$("#saveManual").addEventListener("click", saveManualRecipe);
 
 $("#manualImportBtn").addEventListener("click", () => showPanel("import"));
 
-$$(".seg-btn").forEach((b) => b.addEventListener("click", () => {
+$$(".seg-btn[data-kind]").forEach((b) => b.addEventListener("click", () => {
   if (manual.kind === b.dataset.kind) return;
   manual.kind = b.dataset.kind;
   manual.dose_g = clampN(manual.dose_g, ...LIMITS[manual.kind].dose);
@@ -1405,6 +1510,12 @@ async function loadRecipes() {
     if (!recipes.length) { box.innerHTML = '<div class="empty"><p class="muted">لا توجد وصفات.</p></div>'; return; }
     box.innerHTML = recipes.map(recipeCard).join("");
   } catch (err) {
+    if (isAuthError(err)) {
+      await refreshSession();
+      box.innerHTML = '<div class="empty"><p class="muted">سجّل الدخول بحساب XBloom لعرض وصفاتك.</p><button class="btn btn-accent" id="recipesLoginBtn" type="button">دخول حساب XBloom</button></div>';
+      $("#recipesLoginBtn").addEventListener("click", () => requireLogin(loadRecipes));
+      return;
+    }
     box.innerHTML = `<div class="empty"><p class="muted">${escapeHtml(err.message)}</p></div>`;
   }
 }
@@ -1571,6 +1682,12 @@ async function loadCommunity() {
     if (!recipes.length) { box.innerHTML = '<div class="empty"><p class="muted">لا توجد وصفات بهذه الفلاتر.</p></div>'; return; }
     box.innerHTML = recipes.map(communityCard).join("");
   } catch (err) {
+    if (isAuthError(err)) {
+      await refreshSession();
+      box.innerHTML = '<div class="empty"><p class="muted">سجّل الدخول بحساب XBloom لعرض وصفاتك.</p><button class="btn btn-accent" id="recipesLoginBtn" type="button">دخول حساب XBloom</button></div>';
+      $("#recipesLoginBtn").addEventListener("click", () => requireLogin(loadRecipes));
+      return;
+    }
     box.innerHTML = `<div class="empty"><p class="muted">${escapeHtml(err.message)}</p></div>`;
   }
 }
@@ -1699,6 +1816,7 @@ GRIND: 40-55 very fine | 56-70 fine-medium | 71-85 medium | 86-100 medium-coarse
 ROAST TABLE: Very light 94-95°C grind 50-62 ratio 1:15-16 | Light 90-93°C grind 58-68 ratio 1:15 | Medium 88-91°C grind 70-80 ratio 1:15-16 | Dark 85-88°C grind 82-95 ratio 1:16-17.
 PROCESS ADJUSTMENTS: Washed/dense: grind 3-5 finer | Natural/honey/anaerobic: grind 3-5 coarser | Fresh<7days: bloom x2.5 dose 35-45s.
 COFFEE STEPS: dose_g TOTAL at top level. Sum of pour volumes = dose_g*ratio ±5%. Bloom = first pour 2-2.5x dose, long pause. 2-7 pours total.
+ICED (iced/cold/flash/مثلجة/باردة/ثلج): XBloom HEATS water, it cannot brew cold. Iced = hot flash brew onto ice in the server. temp 92-95°C on EVERY pour, NEVER low/cold temps. ratio = HOT-water ratio 9-10 (~60% hot water, ~40% ice). Grind 5-8 finer. 3-4 pours, bloom 2x dose 30-40s, later pauses 0-15s, total under ~2:30. Name starts with "Iced"; notes say grams of ice.
 TEA: dose_g = total leaf weight. Green 70-80°C. White 75-85°C. Oolong 85-95°C. Black 90-100°C. Herbal 100°C. 1-3 steeps.
 DIAL-IN: sour/under = finer+hotter | bitter/over = coarser+cooler | weak = higher ratio | strong = lower ratio.
 OUTPUT: Reply with ONE raw JSON object only. No markdown, no text outside JSON. Use "kind":"coffee"+"pours" OR "kind":"tea"+"steeps". Include "name","dose_g","ratio","notes"(1 paragraph).`;
@@ -1775,12 +1893,64 @@ async function runAssistStatic(text, image, liveEl, timerEl, onToken, onRecipe, 
       }
     }
     // Extract recipe JSON from fullText
-    const recipe = extractRecipeJson(fullText);
+    let recipe = extractRecipeJson(fullText);
+    if (recipe?.kind === "coffee" && isIcedRequest(text, recipe.name, recipe.notes)) recipe = applyIcedRules(recipe);
     if (recipe) onRecipe(recipe);
     else onToken("\n\n(لم يُعيد الموديل وصفة JSON واضحة)");
   } catch (err) {
     onError(String(err.message || err));
   }
+}
+
+// Iced pour-over guard — same rules as server/iced.js (keep in sync).
+// XBloom heats water; iced = hot flash brew onto ice, never a cold-water recipe.
+const ICED_RE = /\biced?\b|\bcold\b|\bflash\b|japanese|مثلج|ثلج|بارد|آيس|ايس كوفي/i;
+
+const HOT_SHARE = 0.6; // 60% hot water through the bed, 40% ice in the server
+
+function isIcedRequest(...texts) {
+  return texts.some((t) => typeof t === "string" && ICED_RE.test(t));
+}
+
+function applyIcedRules(recipe) {
+  if (!recipe || recipe.kind !== "coffee" || !Array.isArray(recipe.pours) || !recipe.pours.length) return recipe;
+
+  // A ratio above 12 is the total-drink ratio; brew only the hot share of it.
+  let ratio = Number(recipe.ratio) || 16;
+  if (ratio > 12) ratio = Math.max(8, Math.round(ratio * HOT_SHARE * 10) / 10);
+  const dose = Number(recipe.dose_g) || 15;
+  const hotWater = dose * ratio;
+
+  // Bloom stays ~2x dose; the rest of the hot water keeps the model's proportions.
+  const bloom = Math.min(Math.round(dose * 2), Math.round(hotWater * 0.4));
+  const rest = recipe.pours.slice(1);
+  const restSum = rest.reduce((a, p) => a + (Number(p.volume_ml) || 0), 0);
+  const volumes = recipe.pours.length === 1 ? [Math.round(hotWater)] : [bloom, ...rest.map((p) =>
+    Math.max(1, Math.round((hotWater - bloom) * (restSum ? (Number(p.volume_ml) || 0) / restSum : 1 / rest.length))))];
+  const pours = recipe.pours.map((p, i) => {
+    const temp = Number(p.temperature_c);
+    return {
+      ...p,
+      volume_ml: volumes[i],
+      // Hot water does the extracting; the ice does the chilling.
+      temperature_c: Number.isFinite(temp) && temp >= 90 ? Math.min(temp, 95) : 93,
+      // Bloom 25-45s, then keep it moving so the drink stays bright and cold.
+      pause_seconds: i === 0
+        ? Math.min(45, Math.max(25, Number(p.pause_seconds) || 30))
+        : Math.min(15, Math.max(0, Number(p.pause_seconds) || 0)),
+    };
+  });
+
+  const iceG = Math.round(hotWater * (1 - HOT_SHARE) / HOT_SHARE);
+  let name = String(recipe.name || "Iced Coffee").replace(/\s*·\s*ice \d+g$/i, "");
+  if (!/iced/i.test(name)) name = `Iced ${name}`;
+  name = name.slice(0, 48) + ` · ice ${iceG}g`;
+
+  const iceNote = `☕🧊 ضع ${iceG}g ثلج في السيرفر قبل التحضير — الماء ساخن (${pours[0].temperature_c}°C) وينصبّ مباشرة على الثلج.`;
+  const prior = String(recipe.notes || "").replace(/^☕🧊.*\n?/, "");
+  const notes = [iceNote, prior].filter(Boolean).join("\n");
+
+  return { ...recipe, name, ratio, pours, notes, iced: true, ice_g: iceG };
 }
 
 function buildUserContent(text, image) {

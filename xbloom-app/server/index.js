@@ -2,8 +2,10 @@
 // Three ways to build a recipe: chat with a local Ollama model, fill the form by hand,
 // or import from a share link. Everything talks to XBloom through server/xbloom.js.
 
-const express = require("express");
 const path = require("node:path");
+// Secrets (OLLAMA_API_KEY, OPENROUTER_API_KEY…) live in xbloom-app/.env, which git ignores
+try { process.loadEnvFile(path.join(__dirname, "..", ".env")); } catch { /* no .env */ }
+const express = require("express");
 
 const xbloom = require("./xbloom");
 const brew   = require("./brew");
@@ -12,6 +14,7 @@ const openrouter = require("./openrouter");
 const store = require("./store");
 const community = require("./community");
 const { SYSTEM_PROMPT, RECIPE_SCHEMA } = require("./prompt");
+const { isIcedRequest, applyIcedRules } = require("./iced");
 const beans = require("./beans");
 
 const app = express();
@@ -24,7 +27,9 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 
 const route = (fn) => (req, res) =>
   fn(req, res).catch((e) => {
-    if (!res.headersSent) res.status(500).json({ error: String(e.message || e) });
+    // A rejected token means the saved session is dead — forget it so the UI asks to sign in again
+    if (e.status === 401 && store.load()?.token) store.clear();
+    if (!res.headersSent) res.status(e.status || 500).json({ error: String(e.message || e) });
     else res.end();
   });
 
@@ -119,7 +124,7 @@ app.post("/api/import", route(async (req, res) => {
 
 app.get("/api/ollama/models", route(async (req, res) => {
   try {
-    res.json({ models: await ollama.listModels(), url: ollama.OLLAMA_URL });
+    res.json({ models: await ollama.listModels(), url: ollama.OLLAMA_URL, default: ollama.DEFAULT_MODEL, cloud: ollama.CLOUD });
   } catch (e) {
     res.status(503).json({ error: `Could not reach Ollama at ${ollama.OLLAMA_URL}. Is it running?`, detail: String(e.message || e) });
   }
@@ -381,7 +386,7 @@ app.post("/api/assist", async (req, res) => {
       );
     }
   } catch (e) {
-    if (req.destroyed) { try { res.end(); } catch {} return; }
+    if (abort.signal.aborted) { try { res.end(); } catch {} return; }
     send({ type: "error", error: `${useOpenRouter ? "OpenRouter" : "Ollama"} error: ${String(e.message || e)}` });
     res.end();
     return;
@@ -404,6 +409,10 @@ app.post("/api/assist", async (req, res) => {
         : await ollama.chat(repairMessages, { model, temperature: 0.1, format: RECIPE_SCHEMA });
       recipe = normalizeRecipe(extractJson(repair));
     } catch {}
+  }
+
+  if (recipe && recipe.kind === "coffee" && isIcedRequest(userText, recipe.name, recipe.notes)) {
+    recipe = applyIcedRules(recipe);
   }
 
   if (!recipe) send({ type: "error", error: "تعذّر توليد وصفة صالحة. جرّب موديل آخر أو أعد المحاولة." });
@@ -461,7 +470,8 @@ app.get("/api/openrouter/models", route(async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`\n  XBloom dashboard  ->  http://localhost:${PORT}`);
-  console.log(`  Ollama endpoint   ->  ${ollama.OLLAMA_URL}`);
+  console.log(`  Ollama endpoint   ->  ${ollama.OLLAMA_URL}${ollama.CLOUD ? " (cloud, API key set)" : ""}`);
+  console.log(`  Default AI model  ->  ${ollama.DEFAULT_MODEL}`);
   console.log(`  OpenRouter key    ->  ${openrouter.hasKey() ? "✓ set" : "not set (cloud AI disabled)"}`);
   console.log(`  Session file      ->  ${store.STORE_FILE}\n`);
 });

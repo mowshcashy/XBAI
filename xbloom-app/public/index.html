@@ -252,8 +252,9 @@
 
     <!-- ============ ASSISTANT ============ -->
     <section id="panel-assistant" class="panel" style="display:none">
-      <div class="panel-head">
-        <div>
+      <div class="panel-head assist-head">
+        <div class="assist-title">
+          <span class="assist-badge"><span class="spark">✦</span> AI</span>
           <h1>مساعد التحضير</h1>
           <p class="muted" id="assistHint">اختر المزوّد، صف قهوتك أو شايك</p>
         </div>
@@ -261,15 +262,18 @@
           <div class="seg" role="tablist">
             <button type="button" class="seg-btn active" data-provider="ollama">
               <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-              Ollama <small class="muted" style="font-weight:400">(محلي)</small>
+              <span class="seg-txt">Ollama <small>محلي</small></span>
             </button>
             <button type="button" class="seg-btn" data-provider="openrouter">
               <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-              OpenRouter <small class="muted" style="font-weight:400">(سحابة)</small>
+              <span class="seg-txt">OpenRouter <small>سحابة</small></span>
             </button>
           </div>
           <div class="row" id="modelRow">
-            <select id="modelSelect" class="model-select"></select>
+            <label class="model-pick">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg>
+              <select id="modelSelect" class="model-select" aria-label="الموديل"></select>
+            </label>
             <button id="refreshModels" class="icon-btn" title="تحديث الموديلات" type="button">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
             </button>
@@ -298,25 +302,35 @@
                 </svg>
               </div>
               <h2 class="ai-hero-title">صف محصولك</h2>
-              <p class="ai-hero-sub">اكتب نوع القهوة أو الشاي، المنشأ، التحميص، المعالجة…<br>أو ارفع صورة الكيس مباشرةً وسأقرأها</p>
+              <p class="ai-hero-sub">اكتب نوع القهوة أو الشاي، المنشأ، التحميص، المعالجة… أو ارفع صورة الكيس وسأقرأها</p>
             </div>
-            <div id="aiImgPreview" class="ai-img-preview hidden">
-              <img id="aiImgThumb" alt="صورة المحصول" />
-              <button id="aiImgRemove" class="attach-remove" type="button">✕</button>
-            </div>
-            <textarea id="aiDescInput" class="ai-desc-input" rows="4"
-              placeholder="مثال: قهوة إثيوبية يرغاشيفي، تحميص فاتح، معالجة طبيعية، أريد أبرز النكهات الفاكهية…"></textarea>
-            <div class="ai-hero-btns">
-              <label class="btn btn-ghost-soft ai-upload-lbl" for="aiImgFile">
-                <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                ارفع صورة الكيس
-              </label>
+            <div class="ai-composer" id="aiComposer">
+              <div id="aiImgPreview" class="ai-img-preview hidden">
+                <img id="aiImgThumb" alt="صورة المحصول" />
+                <span>صورة الكيس جاهزة</span>
+                <button id="aiImgRemove" class="attach-remove" type="button" aria-label="إزالة الصورة">✕</button>
+              </div>
+              <textarea id="aiDescInput" class="ai-desc-input" rows="4"
+                placeholder="مثال: قهوة إثيوبية يرغاشيفي، تحميص فاتح، معالجة طبيعية، أريد أبرز النكهات الفاكهية…"></textarea>
+              <div class="ai-composer-bar">
+                <label class="ai-upload-lbl" for="aiImgFile">
+                  <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                  صورة الكيس
+                </label>
+                <span class="ai-drop-hint">أو اسحب الصورة هنا</span>
+              </div>
               <input type="file" id="aiImgFile" accept="image/*" class="hidden" />
-              <button type="button" id="aiBrewBtn" class="btn btn-accent ai-brew-btn">
-                احضر لي وصفة
-                <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </button>
             </div>
+            <div class="ai-suggest">
+              <button type="button" class="ai-suggest-chip" data-prompt="بن إثيوبي فاتح التحميص مغسول بنكهات زهرية وحمضيات">☕ إثيوبي فاتح</button>
+              <button type="button" class="ai-suggest-chip" data-prompt="بن كولومبي متوسط التحميص بنكهة كراميل وشوكولاتة">🍫 كولومبي متوسط</button>
+              <button type="button" class="ai-suggest-chip" data-prompt="قهوة مقطّرة مثلجة منعشة على الثلج">🧊 مثلجة</button>
+              <button type="button" class="ai-suggest-chip" data-prompt="شاي أولونغ بثلاث نقعات تزيد حرارتها كل مرة">🍵 أولونغ</button>
+            </div>
+            <button type="button" id="aiBrewBtn" class="btn btn-accent ai-brew-btn">
+              احضر لي وصفة
+              <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
           </div>
         </div>
 
@@ -608,8 +622,17 @@
             <button class="ai-chip" data-prompt="قهوة مقطّرة مثلجة منعشة على الثلج" type="button">🧊 قهوة مثلجة</button>
             <button class="ai-chip" data-prompt="بن طبيعي المعالجة بنكهات فواكه استوائية" type="button">🍓 طبيعي فواكه</button>
           </div>
+          <div id="homeImgPreview" class="home-img-preview hidden">
+            <img id="homeImgThumb" alt="صورة المحصول" />
+            <span>صورة المحصول</span>
+            <button id="homeImgRemove" class="home-img-remove" type="button" aria-label="إزالة الصورة">✕</button>
+          </div>
           <form class="home-ai-ask" id="homeAiForm">
             <input id="homeAiInput" type="text" autocomplete="off" placeholder="اسأل الـ AI عن محصولك…" />
+            <label class="ask-photo" for="homeImgFile" aria-label="أضف صورة المحصول" title="أضف صورة المحصول">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </label>
+            <input type="file" id="homeImgFile" accept="image/*" class="hidden" />
             <button class="ask-go" type="submit" aria-label="صمّم الوصفة">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M3 21l9-9M12.2 6.2L11 5"/></svg>
             </button>
@@ -678,15 +701,19 @@
   <nav class="mobile-nav" id="mobileNav">
     <button class="mnav-btn" data-goto="home" type="button" aria-label="الرئيسية">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10l9-7 9 7v10a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z"/></svg>
+      <span class="mnav-label">الرئيسية</span>
     </button>
     <button class="mnav-btn" data-goto="assistant" type="button" aria-label="AI">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>
+      <span class="mnav-label">AI</span>
     </button>
     <button class="mnav-btn" data-goto="recipes" type="button" aria-label="وصفاتي">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
+      <span class="mnav-label">وصفاتي</span>
     </button>
     <button class="mnav-btn" data-goto="community" type="button" aria-label="المجتمع">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/></svg>
+      <span class="mnav-label">المجتمع</span>
     </button>
   </nav>
 
@@ -704,12 +731,14 @@
       <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11V12z"/></svg>
       <span>كلمة المرور تُستخدم مرة واحدة ولا تُخزَّن</span>
     </div>
+    <p id="loginReason" class="login-reason hidden"></p>
     <form id="loginForm">
-      <label class="field"><span>البريد الإلكتروني</span><input name="email" type="email" required placeholder="you@email.com" /></label>
-      <label class="field"><span>كلمة المرور</span><input name="password" type="password" required placeholder="••••••••" /></label>
+      <label class="field"><span>البريد الإلكتروني</span><input name="email" type="email" required autocomplete="username" placeholder="you@email.com" /></label>
+      <label class="field"><span>كلمة المرور</span><input name="password" type="password" required autocomplete="current-password" placeholder="••••••••" /></label>
+      <p id="loginError" class="login-error hidden" role="alert"></p>
       <div class="row end">
         <button type="button" id="loginCancel" class="btn btn-ghost-soft">إلغاء</button>
-        <button type="submit" class="btn btn-accent">دخول</button>
+        <button type="submit" id="loginSubmit" class="btn btn-accent">دخول</button>
       </div>
     </form>
   </div>

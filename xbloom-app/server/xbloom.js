@@ -76,6 +76,14 @@ function xbloomFailure(resp) {
   return detail || "XBloom request failed.";
 }
 
+// Error for an authenticated call; token/login failures are flagged 401 so the
+// app can drop the stale session and ask the user to sign in again.
+function authFailure(resp) {
+  const err = new Error(xbloomFailure(resp));
+  if (/token|log ?in|expired|登录/i.test(err.message)) err.status = 401;
+  return err;
+}
+
 function authBase(creds) {
   return {
     interfaceVersion: 20240918,
@@ -83,7 +91,7 @@ function authBase(creds) {
     phoneType: "Android",
     memberId: creds.memberId,
     clientType: 2,
-    languageType: 1,
+    languageType: 0, // 0 = English messages (1 is French)
     token: creds.token,
   };
 }
@@ -127,7 +135,7 @@ async function login(email, password) {
     skey: "testskey",
     clientType: 2,
     phoneType: "Android",
-    languageType: 1,
+    languageType: 0, // 0 = English messages (1 is French)
     email,
     password,
   });
@@ -141,7 +149,7 @@ async function listRecipes(creds) {
   const resp = await postEncrypted("tuMyTeaRecipeCreated.tuhtml", {
     ...authBase(creds), pageNumber: 1, countPerPage: 100, adaptedModel: 1,
   });
-  if (resp.result !== "success") throw new Error(xbloomFailure(resp));
+  if (resp.result !== "success") throw authFailure(resp);
   return (resp.list || []).map((r) => ({
     id: r.tableId,
     name: r.theName,
@@ -190,7 +198,7 @@ async function addRecipe(creds, spec) {
     pourDataJSONStr: JSON.stringify(pourList),
   };
   const resp = await postEncrypted("tuRecipeAdd.tuhtml", payload);
-  if (resp.result !== "success") throw new Error(xbloomFailure(resp));
+  if (resp.result !== "success") throw authFailure(resp);
   const shareId = Buffer.from(String(resp.tableId)).toString("base64");
   return { id: resp.tableId, share_link: `${SHARE_BASE}/?id=${encodeURIComponent(shareId)}` };
 }
@@ -238,7 +246,7 @@ async function updateRecipe(creds, recipeId, patch) {
   }
 
   const resp = await postEncrypted("tuRecipeUpdate.tuhtml", payload);
-  if (resp.result !== "success") throw new Error(xbloomFailure(resp));
+  if (resp.result !== "success") throw authFailure(resp);
   return { id: recipeId };
 }
 
@@ -246,7 +254,7 @@ async function deleteRecipe(creds, recipeId) {
   const resp = await postEncrypted("tuRecipeDelete.tuhtml", {
     ...authBase(creds), tableId: recipeId,
   });
-  if (resp.result !== "success") throw new Error(xbloomFailure(resp));
+  if (resp.result !== "success") throw authFailure(resp);
   return { id: recipeId };
 }
 

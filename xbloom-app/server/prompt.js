@@ -110,6 +110,14 @@ CRITICAL TRAP: light roasts under-extract easily and their sharp sourness is oft
 When adjusting an existing recipe, apply the fix to the FULL pour list, not just one step.
 In "notes", briefly explain the diagnosis and the one change you made.
 
+# ICED COFFEE (iced / cold / flash / مثلجة / باردة / ثلج)
+The XBloom HEATS water — it cannot brew cold. Iced pour-over = hot "flash brew" poured directly onto ice in the server (Japanese method).
+- temperature_c stays HOT: 92-95°C on EVERY pour. NEVER use cold or low temperatures — the ice does the chilling.
+- Brew only ~60% of the drink as hot water; the other ~40% is ice. Set "ratio" to the HOT-water ratio: 9-10 (e.g. 15g → ~145ml hot + ~95g ice).
+- Grind 5-8 points FINER than the hot recipe for the same bean (less water must extract the same).
+- 3-4 pours. Bloom 2x dose, pause 30-40s. Later pauses 0-15s — total brew under ~2:30. No cold-brew style long steeps.
+- Name starts with "Iced". In "notes", say how many grams of ice to put in the server first.
+
 # TEA RULES
 - dose_g is the TOTAL leaf weight. Green: 70-80°C. White: 75-85°C. Oolong: 85-95°C. Black: 90-100°C. Herbal: 100°C.
 - Multiple steeps: increase temperature slightly and/or lengthen time each steep.
