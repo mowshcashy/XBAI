@@ -769,7 +769,7 @@ $("#aiBrewBtn").addEventListener("click", async () => {
   $("#resultNotes").textContent = recipe.notes || "";
   $("#resultSource").textContent = source === "ai"
     ? "صممها الذكاء الاصطناعي بالاستناد لوصفات المحامص"
-    : recipe.basedOn ? `من مكتبة المحامص: ${recipe.basedOn.roaster}` : "صممها محرك XBloom Studio";
+    : recipe.basedOn ? `من مكتبة المحامص: ${recipe.basedOn.roaster}` : "صممها محرك XBAI";
   renderPreview(recipe);
   $("#previewBadge").classList.remove("hidden");
   $("#previewActions").classList.add("hidden");
@@ -1850,7 +1850,7 @@ async function runAssistStatic(text, image, liveEl, timerEl, onToken, onRecipe, 
           "Content-Type": "application/json",
           Authorization: `Bearer ${settings.orKey}`,
           "HTTP-Referer": location.origin,
-          "X-Title": "XBloom Studio",
+          "X-Title": "XBAI",
         },
         body: JSON.stringify(body),
       });

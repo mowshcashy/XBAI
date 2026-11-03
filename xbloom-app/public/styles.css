@@ -52,8 +52,8 @@ a{color:var(--blue)}
 :focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 option{background:#fff;color:#000}
 
-.wordmark{font-family:var(--ui);font-weight:600;font-size:1.05rem;letter-spacing:-.01em;direction:ltr;unicode-bidi:isolate}
-.wordmark em{font-family:var(--display);font-style:italic;font-weight:400;font-size:1.15em;margin-inline-start:.1em}
+.wordmark{display:inline-flex;align-items:center;gap:.5rem;font-family:var(--ui);font-weight:600;font-size:1.15rem;letter-spacing:.04em;direction:ltr;unicode-bidi:isolate}
+.wordmark-logo{width:30px;height:30px;flex-shrink:0}
 
 /* ---------- layout ---------- */
 .app{display:flex;min-height:100vh;background:var(--bg)}
@@ -63,8 +63,7 @@ option{background:#fff;color:#000}
   display:flex;flex-direction:column;padding:1.3rem 1rem;height:100vh;position:sticky;top:0;
 }
 .logo{display:flex;align-items:center;gap:.6rem;padding:0 .4rem 1.4rem}
-.logo-mark{width:34px;height:34px;border-radius:9px;background:#000;color:#fff;display:grid;place-items:center;flex-shrink:0}
-.logo-mark svg{width:19px;height:19px}
+.logo-mark{width:34px;height:34px;flex-shrink:0;object-fit:contain}
 .mod-grid{display:flex;flex-direction:column;gap:2px}
 .mod-card{
   display:flex;align-items:center;gap:.7rem;width:100%;padding:.6rem .75rem;border-radius:var(--radius-sm);

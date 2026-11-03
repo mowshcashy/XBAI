@@ -75,7 +75,7 @@ async function chat(messages, { model, temperature = 0.7, image } = {}) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${key}`,
       "HTTP-Referer": "http://localhost:8787",
-      "X-Title": "XBloom Studio",
+      "X-Title": "XBAI",
     },
     body: JSON.stringify({
       model: model || DEFAULT_MODELS[0].id,
@@ -100,7 +100,7 @@ async function chatStream(messages, { model, temperature = 0.5, image }, onChunk
       "Content-Type": "application/json",
       Authorization: `Bearer ${key}`,
       "HTTP-Referer": "http://localhost:8787",
-      "X-Title": "XBloom Studio",
+      "X-Title": "XBAI",
     },
     body: JSON.stringify({
       model: model || DEFAULT_MODELS[0].id,

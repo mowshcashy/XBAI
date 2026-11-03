@@ -1,10 +1,10 @@
 // Offline shell for the installed app. Network first so updates land straight away;
 // the cache only answers when the phone is offline. API and cross-origin calls pass through.
-const CACHE = "xbloom-studio-v21";
+const CACHE = "xbai-v22";
 const SHELL = [
   "./", "index.html", "styles.css", "app.js", "studio.js", "recipe-engine.js",
   "xbloom-web.js", "xbloom-ble.js", "reference-recipes.json", "manifest.webmanifest",
-  "icon-192.png", "icon-512.png",
+  "icon-192.png", "icon-512.png", "logo.svg", "favicon-32.png", "apple-touch-icon.png",
 ];
 
 self.addEventListener("install", (e) => {
