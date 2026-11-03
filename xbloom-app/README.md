@@ -89,11 +89,17 @@ xbloom-app/
 
 1. في Coolify: **+ New → Public Repository** → `https://github.com/mowshcashy/XBAI` فرع `master`.
 2. **Build Pack**: `Dockerfile` — **Base Directory**: `/xbloom-app` — **Ports Exposes**: `8787`.
-3. **Environment Variables**:
-   - `DEEPSEEK_API_KEY` = مفتاحك من platform.deepseek.com (علّمه Secret)
-   - اختياري: `DEEPSEEK_MODEL` (الافتراضي `deepseek-flash` ويقرأ صور الأكياس)، `AI_RATE_LIMIT` (الافتراضي 30 طلب بالساعة لكل زائر، `0` بدون حد)
+3. **Environment Variables** — الذكاء الاصطناعي لكل الزوار، اختر واحد:
+   - **Ollama Cloud** (الأسهل، بدون GPU):
+     - `OLLAMA_API_KEY` = مفتاحك من ollama.com/settings/keys (علّمه Secret)
+     - `OLLAMA_MODEL` = `deepseek-v4.1-flash:cloud` (يقرأ صور الأكياس) أو `deepseek-v4-pro:cloud`
+   - **Ollama داخل Coolify**: أضف خدمة Ollama من Coolify على نفس السيرفر، ثم:
+     - `OLLAMA_URL` = رابط الخدمة الداخلي (مثل `http://ollama:11434`)
+     - `OLLAMA_MODEL` = الموديل اللي سحبته عليها (بدون GPU يكون بطيء)
+   - **DeepSeek مباشرة**: `DEEPSEEK_API_KEY` (وتقدر تحدد `AI_PROVIDER=deepseek`)
+   - اختياري: `AI_RATE_LIMIT` (الافتراضي 30 طلب بالساعة لكل زائر، `0` بدون حد)
 4. **Domains**: حط دومينك بـ `https://` — البلوتوث في المتصفح ما يشتغل إلا على HTTPS، وCoolify يطلع الشهادة تلقائياً.
 5. **Deploy**. فعّل Auto Deploy عشان كل push على GitHub ينشر تلقائياً.
 
-تأكد بعد النشر: `https://دومينك/api/ai/status` لازم يرجع `"deepseek":true`.
+تأكد بعد النشر: `https://دومينك/api/ai/status` لازم يرجع `"ready":true` واسم الموديل.
 - هذا التطبيق مستقل عن دالة Supabase في `xbloom-mcp-remote/`؛ كلاهما يستخدم نفس XBloom API.

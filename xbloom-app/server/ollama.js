@@ -14,6 +14,13 @@ const VISION_MODELS = CLOUD
   ? [DEFAULT_MODEL, "gemma4:31b", "glm-5.3-flash"]
   : ["kimi-k3:cloud", "minimax-m3:cloud", "gemma4:31b-cloud"];
 
+// "deepseek-v4.1-flash:cloud" is how a signed-in local daemon names a cloud model;
+// ollama.com's own API wants the bare name.
+const modelName = (m) => (CLOUD ? String(m || DEFAULT_MODEL).replace(/[:-]cloud$/i, "") : m || DEFAULT_MODEL);
+// Thinking only slows down a short JSON recipe.
+const NO_THINK = /deepseek|qwen3/i;
+const isVision = (m) => VISION_MODELS.includes(m || DEFAULT_MODEL) || /deepseek-v4\.1-flash|gemma[34]|vision|-vl\b|llava/i.test(m || DEFAULT_MODEL);
+
 const headers = () => ({
   "Content-Type": "application/json",
   ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
@@ -51,12 +58,13 @@ function withImages(messages, image) {
 
 async function chat(messages, { model, temperature = 0.7, format, image } = {}) {
   const body = {
-    model: model || DEFAULT_MODEL,
+    model: modelName(model),
     messages: image ? withImages(messages, image) : messages,
     stream: false,
     options: { temperature },
   };
   if (format) body.format = format;
+  if (NO_THINK.test(body.model)) body.think = false;
   const resp = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
     headers: headers(),
@@ -73,12 +81,13 @@ async function chat(messages, { model, temperature = 0.7, format, image } = {}) 
 // Streaming chat — onChunk(token) fires as tokens arrive; returns the full text.
 async function chatStream(messages, { model, temperature = 0.5, format, image }, onChunk, signal) {
   const body = {
-    model: model || DEFAULT_MODEL,
+    model: modelName(model),
     messages: image ? withImages(messages, image) : messages,
     stream: true,
     options: { temperature },
   };
   if (format) body.format = format;
+  if (NO_THINK.test(body.model)) body.think = false;
 
   const resp = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
@@ -102,15 +111,14 @@ async function chatStream(messages, { model, temperature = 0.5, format, image },
     buffer = lines.pop();
     for (const line of lines) {
       if (!line.trim()) continue;
-      try {
-        const evt = JSON.parse(line);
-        const token = evt.message?.content ?? evt.response ?? "";
-        if (token) { full += token; if (onChunk) onChunk(token); }
-        if (evt.error) throw new Error(String(evt.error));
-      } catch { /* chunk boundary */ }
+      let evt;
+      try { evt = JSON.parse(line); } catch { continue; /* chunk boundary */ }
+      if (evt.error) throw new Error(String(evt.error));
+      const token = evt.message?.content ?? evt.response ?? "";
+      if (token) { full += token; if (onChunk) onChunk(token); }
     }
   }
   return full;
 }
 
-module.exports = { listModels, chat, chatStream, OLLAMA_URL, VISION_MODELS, DEFAULT_MODEL, CLOUD };
+module.exports = { listModels, chat, chatStream, OLLAMA_URL, VISION_MODELS, DEFAULT_MODEL, CLOUD, isVision };

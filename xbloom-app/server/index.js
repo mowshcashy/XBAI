@@ -27,6 +27,9 @@ const PORT = Number(process.env.PORT || 8787);
 // the server only serves the app and the AI (DeepSeek, key kept server-side).
 const PUBLIC = /^(1|true|yes)$/i.test(process.env.PUBLIC_MODE || "");
 const AI_LIMIT = Number(process.env.AI_RATE_LIMIT || 30); // AI requests per visitor per hour
+// The AI every visitor gets on a public deployment: Ollama (local daemon, a Coolify
+// Ollama service, or Ollama Cloud with OLLAMA_API_KEY) or DeepSeek's own API.
+const SERVER_AI = (process.env.AI_PROVIDER || (deepseek.hasKey() ? "deepseek" : "ollama")).toLowerCase();
 
 app.set("trust proxy", true);
 app.use(express.json({ limit: "15mb" }));
@@ -36,11 +39,26 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
-app.get("/api/ai/status", (req, res) => {
+// Whether the server's AI answers right now (cached briefly so the check stays cheap).
+let aiCheck = { at: 0, ready: false };
+async function serverAiReady() {
+  if (SERVER_AI === "deepseek") return deepseek.hasKey();
+  if (Date.now() - aiCheck.at < 60_000) return aiCheck.ready;
+  let ready = false;
+  try { await ollama.listModels(); ready = true; } catch {}
+  aiCheck = { at: Date.now(), ready };
+  return ready;
+}
+
+app.get("/api/ai/status", async (req, res) => {
+  const isDs = SERVER_AI === "deepseek";
+  const ready = await serverAiReady();
   res.json({
-    deepseek: deepseek.hasKey(),
-    model: deepseek.DEFAULT_MODEL,
-    vision: deepseek.supportsVision(),
+    provider: SERVER_AI,
+    ready,
+    deepseek: isDs && ready,
+    model: isDs ? deepseek.DEFAULT_MODEL : ollama.DEFAULT_MODEL,
+    vision: isDs ? deepseek.supportsVision() : ollama.isVision(ollama.DEFAULT_MODEL),
     public: PUBLIC,
   });
 });
@@ -336,10 +354,11 @@ function visionCandidateModels(selected, available) {
 
 app.post("/api/assist", aiRateLimit, async (req, res) => {
   const { message, provider, history, image } = req.body || {};
-  // On a public deployment only DeepSeek (server key) is used, whatever the client asks for.
-  const useDeepseek = PUBLIC || provider === "deepseek";
-  const useOpenRouter = !useDeepseek && provider === "openrouter";
-  const model = useDeepseek ? deepseek.DEFAULT_MODEL : req.body?.model;
+  // On a public deployment only the server's own AI (and its configured model) is used,
+  // whatever the client asks for — visitors can't pick other models on the owner's account.
+  const useDeepseek = PUBLIC ? SERVER_AI === "deepseek" : provider === "deepseek";
+  const useOpenRouter = !PUBLIC && !useDeepseek && provider === "openrouter";
+  const model = useDeepseek ? deepseek.DEFAULT_MODEL : PUBLIC ? ollama.DEFAULT_MODEL : req.body?.model;
   if (!message && !image) return res.status(400).json({ error: "A message or an image is required." });
   if (useDeepseek && !deepseek.hasKey()) return res.status(503).json({ error: "الذكاء الاصطناعي غير مفعّل على السيرفر" });
   const providerName = useDeepseek ? "DeepSeek" : useOpenRouter ? "OpenRouter" : "Ollama";
@@ -489,7 +508,9 @@ app.post("/api/assist", aiRateLimit, async (req, res) => {
     } catch {}
   }
 
-  if (recipe && recipe.kind === "coffee" && isIcedRequest(userText, recipe.name, recipe.notes)) {
+  // The app says hot/iced explicitly; only guess from the words when it doesn't.
+  const wantsIced = req.body?.serve ? req.body.serve === "iced" : isIcedRequest(userText, recipe?.name, recipe?.notes);
+  if (recipe && recipe.kind === "coffee" && wantsIced) {
     recipe = applyIcedRules(recipe);
   }
 
@@ -548,6 +569,7 @@ app.get("/api/openrouter/models", route(async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`\n  XBloom dashboard  ->  http://localhost:${PORT}${PUBLIC ? "  (PUBLIC MODE)" : ""}`);
+  console.log(`  Server AI         ->  ${SERVER_AI}${PUBLIC ? " (used for every visitor)" : ""}`);
   console.log(`  DeepSeek          ->  ${deepseek.hasKey() ? `✓ ${deepseek.DEFAULT_MODEL}` : "not set"}`);
   console.log(`  Ollama endpoint   ->  ${ollama.OLLAMA_URL}${ollama.CLOUD ? " (cloud, API key set)" : ""}`);
   console.log(`  Default AI model  ->  ${ollama.DEFAULT_MODEL}`);

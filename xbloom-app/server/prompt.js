@@ -127,6 +127,7 @@ The XBloom HEATS water — it cannot brew cold. Iced pour-over = hot "flash brew
 # SHORT OR VAGUE REQUESTS
 - Never ask questions back. "سو قهوة" / "make coffee" = medium-roast washed, 15g, hot, 1:15.5. Always return a complete recipe.
 - Reply in the user's language inside "name" and "notes" (Arabic if they wrote Arabic).
+- Every number in "notes" (grams, ml, ice, °C, ratio) must equal the JSON fields exactly — the pours are what the machine brews.
 
 # TEA RULES
 - dose_g is the TOTAL leaf weight. Green: 70-80°C. White: 75-85°C. Oolong: 85-95°C. Black: 90-100°C. Herbal: 100°C.

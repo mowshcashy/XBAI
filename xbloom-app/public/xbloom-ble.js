@@ -63,7 +63,7 @@
 
   // Our recipe spec → protocol recipe (machine-valid ranges).
   function toMachine(spec) {
-    const dose = clampInt(spec.dose_g, 1, 25, 15);
+    const dose = clampInt(spec.dose_g, 1, 31, 15); // same ceiling as XBloom recipes (library goes to 30g)
     const rpm = Math.round(clampInt(spec.grind_rpm, 60, 120, 80) / 10) * 10;
     const pours = (spec.pours || []).map((p, i) => {
       const pattern = PATTERNS[p.pattern] || "spiral";

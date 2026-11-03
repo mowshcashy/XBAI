@@ -672,20 +672,21 @@ $("#aiDescInput").addEventListener("input", () => {
 });
 
 // The AI is optional: only call it when a model is actually configured.
-// A hosted server (Coolify) can carry a DeepSeek key; then every visitor gets the AI
-// with no setup. GitHub Pages has no server, so this stays null there.
+// A hosted server (Coolify) can carry its own AI (Ollama or DeepSeek); then every
+// visitor gets it with no setup. GitHub Pages has no server, so this stays null there.
 let SERVER_AI = null;
 fetch("api/ai/status").then((r) => (r.ok ? r.json() : null)).then((s) => {
   SERVER_AI = s;
-  if (s?.deepseek) {
-    $("#assistHint").textContent = "الذكاء الاصطناعي مفعّل (DeepSeek) ويقرأ صور الأكياس. ما يحتاج أي إعداد.";
+  if (s?.ready && s.public) {
+    const who = s.provider === "deepseek" ? "DeepSeek" : `Ollama · ${s.model}`;
+    $("#assistHint").textContent = `الذكاء الاصطناعي مفعّل (${who})${s.vision ? " ويقرأ صور الأكياس" : ""}. ما يحتاج أي إعداد.`;
     $(".ai-advanced .provider-bar")?.classList.add("hidden");
     $("#orKeyBanner")?.classList.add("hidden");
   }
 }).catch(() => {});
 
 function aiReady() {
-  if (SERVER_AI?.deepseek) return true;
+  if (SERVER_AI?.ready && SERVER_AI.public) return true;
   const model = $("#modelSelect")?.value;
   if (!model) return false;
   if (IS_STATIC && state.provider === "openrouter") return !!settings.orKey;
@@ -693,10 +694,10 @@ function aiReady() {
   return true;
 }
 
-async function askAi(text, image) {
+async function askAi(text, image, serve) {
   let fullText = "", gotRecipe = null, gotError = null;
-  const viaDeepseek = !!SERVER_AI?.deepseek;
-  if (IS_STATIC && !viaDeepseek) {
+  const viaServer = !!(SERVER_AI?.ready && SERVER_AI.public);
+  if (IS_STATIC && !viaServer) {
     await runAssistStatic(
       text, image, { querySelector: () => null }, document.createElement("span"),
       (t) => { fullText += t; },
@@ -708,7 +709,7 @@ async function askAi(text, image) {
   const resp = await fetch("api/assist", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message: text, model: viaDeepseek ? undefined : ($("#modelSelect").value || undefined), provider: viaDeepseek ? "deepseek" : state.provider, history: [], image: image || undefined }),
+    body: JSON.stringify({ message: text, model: viaServer ? undefined : ($("#modelSelect").value || undefined), provider: viaServer ? SERVER_AI.provider : state.provider, serve, history: [], image: image || undefined }),
   });
   if (!resp.ok || !resp.body) {
     const err = (await resp.json().catch(() => ({}))).error || `HTTP ${resp.status}`;
@@ -749,7 +750,7 @@ $("#aiBrewBtn").addEventListener("click", async () => {
   if (aiReady()) {
     try {
       const request = [text || (image ? "صمم لي وصفة من صورة الكيس" : "قهوة"), XBRecipe.hint(intent), XBRecipe.referenceHint(intent, text)].filter(Boolean).join("\n\n");
-      const { gotRecipe } = await askAi(request, image);
+      const { gotRecipe } = await askAi(request, image, intent.serve);
       if (gotRecipe) { recipe = XBRecipe.finalize(gotRecipe, intent); source = "ai"; }
     } catch { /* fall back to the built-in engine */ }
   }
@@ -1822,6 +1823,7 @@ ICED (iced/cold/flash/مثلجة/باردة/ثلج): XBloom HEATS water, it cann
 TEA: dose_g = total leaf weight. Green 70-80°C. White 75-85°C. Oolong 85-95°C. Black 90-100°C. Herbal 100°C. 1-3 steeps.
 DIAL-IN: sour/under = finer+hotter | bitter/over = coarser+cooler | weak = higher ratio | strong = lower ratio.
 HOT vs ICED: default HOT. ICED (بارد/مثلج/آيس/iced/cold) = brew hot onto ice: final liquid ≈ dose×15, ice 40%, hot water (sum of pours) 60%; grind ~6 finer, +1°C, bloom 2× dose 30-35s, 2 main pours. Add "serve":"iced","ice_g":N, name starts with "آيس", notes say how much ice to put in the cup. Cold brew is impossible on the machine → give iced instead.
+NOTES MUST MATCH: every number in "notes" (grams, ml, ice, °C, ratio) equals the JSON fields exactly.
 VAGUE REQUESTS: never ask questions. "سو قهوة" = medium washed 15g hot 1:15.5. Write name/notes in the user's language.
 OUTPUT: Reply with ONE raw JSON object only. No markdown, no text outside JSON. Use "kind":"coffee"+"pours" OR "kind":"tea"+"steeps". Include "name","dose_g","ratio","notes"(1 paragraph).`;
 

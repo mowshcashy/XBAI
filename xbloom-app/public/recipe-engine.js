@@ -291,6 +291,13 @@
     r.pours = r.pours.slice(0, 7).map((p) => ({ ...p, temperature_c: clamp(Math.round(Number(p.temperature_c) || 92), 40, 95) }));
     const sum = r.pours.reduce((a, p) => a + (Number(p.volume_ml) || 0), 0);
 
+    // The hot/iced choice (buttons, synced with the text) wins over whatever the model decided.
+    if (intent?.serve === "hot" && (r.ice_g || r.serve === "iced" || r.iced)) {
+      delete r.ice_g; delete r.iced;
+      r.serve = "hot";
+      r.name = String(r.name || "").replace(/^(?:آيس|Iced)\s+/i, "").replace(/\s*(?:\(ثلج\s*\d+\s*g\)|·\s*ice\s*\d+\s*g)\s*/gi, " ").trim();
+    }
+
     if (intent?.serve === "iced" && !r.ice_g) {
       const total = Math.round(r.dose_g * clamp(Number(r.ratio) || 15, 12, 18));
       const ice = round(total * 0.4, 5);
@@ -305,19 +312,57 @@
       r.name = `آيس ${String(r.name || "").replace(/^آيس\s*/, "")} (ثلج ${ice}g)`.slice(0, 60);
       r.notes = `${r.notes || ""} قبل التشغيل حط ${ice}g ثلج في الكوب — الماء الحار يذوب الثلج ويطلع ${total}ml قهوة باردة.`.trim();
     }
+    // Hold AI answers to the roasters' standard (bounds from the 487-recipe library):
+    // iced hot water 8-14× dose with ice 5-8× dose; hot ratio 1:12-1:18.
+    const iced = !!r.ice_g || intent?.serve === "iced";
+    const total = () => r.pours.reduce((acc, p) => acc + (Number(p.volume_ml) || 0), 0);
+    const rescale = (target) => {
+      if (r.pours.length === 1) { r.pours[0] = { ...r.pours[0], volume_ml: target }; return; }
+      const bloom = Math.min(Number(r.pours[0].volume_ml) || r.dose_g * 2, Math.round(target * 0.3));
+      const rest = (total() - (Number(r.pours[0].volume_ml) || 0)) || 1;
+      const k = (target - bloom) / rest;
+      r.pours = r.pours.map((p, idx) => ({ ...p, volume_ml: idx === 0 ? bloom : Math.max(5, Math.round(p.volume_ml * k)) }));
+    };
+    const hotRatio = total() / r.dose_g;
+    if (iced) {
+      if (hotRatio < 8 || hotRatio > 14) rescale(Math.round(r.dose_g * 10));
+      const iceK = (Number(r.ice_g) || 0) / r.dose_g;
+      if (!r.ice_g || iceK < 5 || iceK > 8) r.ice_g = round(r.dose_g * 6.5, 5);
+    } else if (hotRatio < 12 || hotRatio > 18) {
+      rescale(Math.round(r.dose_g * 15));
+    }
+
     if (r.ice_g) {
       let n = String(r.name || "آيس").replace(/\s*·\s*ice\s*\d+\s*g$/i, "");
-      if (/[؀-ۿ]/.test(n)) n = n.replace(/^Iced\s+/i, "آيس ");
+      if (/[\u0600-\u06FF]/.test(n)) n = n.replace(/^Iced\s+/i, "آيس ");
       n = n.replace(/^(?:(?:آيس|Iced)\s+)+/i, (m) => m.trim().split(/\s+/)[0] + " ");
-      if (!/ثلج\s*\d+\s*g/.test(n)) {
+      if (/ثلج\s*\d+\s*g/.test(n)) n = n.replace(/ثلج\s*\d+\s*g/, `ثلج ${Math.round(r.ice_g)}g`);
+      else {
         const suffix = ` (ثلج ${Math.round(r.ice_g)}g)`;
         n = n.slice(0, 60 - suffix.length) + suffix;
       }
       r.name = n;
     }
-    const water = r.pours.reduce((a, p) => a + p.volume_ml, 0);
+    const water = total();
     r.ratio = Number((water / r.dose_g).toFixed(1));
     r.serve = r.ice_g ? "iced" : (r.serve || intent?.serve || "hot");
+    r.total_ml = water + (Number(r.ice_g) || 0);
+
+    // Models often describe different numbers than the pours they return. Lead with the
+    // real numbers and keep only the AI's wording that carries no figures.
+    const summary = [
+      `${r.dose_g}g بن`,
+      `${water}ml ماء${r.ice_g ? " حار" : ""}`,
+      r.ice_g ? `${Math.round(r.ice_g)}g ثلج` : null,
+      `حرارة ${r.pours[0].temperature_c}°`,
+      `طحن ${r.grind_size}`,
+      `${r.pours.length} صبات`,
+    ].filter(Boolean).join("، ") + "." + (r.ice_g ? ` حط ${Math.round(r.ice_g)}g ثلج في الكوب قبل التشغيل.` : "");
+    const prose = String(r.notes || "")
+      .split(/(?<=[.!؟?\n])\s*/)
+      .map((x) => x.replace(/^☕🧊\s*/, "").trim())
+      .filter((x) => x && !/[0-9\u0660-\u0669]/.test(x));
+    r.notes = [summary, ...prose].join(" ");
     return r;
   }
 
@@ -426,7 +471,10 @@
     return [
       "Reference recipes from Saudi roasters on the XBloom (treat them as the standard; pours are [ml, °C, pause s, pattern]):",
       ...picks.map((r) => JSON.stringify(compact(r))),
-      "Library medians — hot: dose 18g, ratio 1:15, 91°C, grind 55, 100 rpm, bloom 2.3× dose, 4 pours. Iced: dose 17g, hot water ≈ 10× dose, ice ≈ 6.7× dose, 92°C, grind 50, ~82 rpm, 3 pours.",
+      // Only the requested serve's medians: words like "ice" in a hot request flip the iced guards.
+      intent.serve === "iced"
+        ? "Library medians for this style: dose 17g, hot water ≈ 10× dose, ice ≈ 6.7× dose, 92°C, grind 50, ~82 rpm, 3 pours."
+        : "Library medians for this style: dose 18g, ratio 1:15, 91°C, grind 55, 100 rpm, bloom 2.3× dose, 4 pours.",
     ].join("\n");
   }
 
