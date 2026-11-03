@@ -81,5 +81,19 @@ xbloom-app/
 
 - كلمة مرور XBloom تُستخدم مرة واحدة لتسجيل الدخول ثم تُهمل — **لا تُحفظ أبداً**.
 - يُحفظ فقط `memberId` و`token` في `xbloom-app/.data/session.json` بصلاحيات مقيدة (`0600`).
-- السيرفر يستمع على المنفذ المحلي فقط — لا تفتحه للإنترنت بدون إضافة مصادقة.
+- السيرفر يستمع على المنفذ المحلي فقط — لا تفتحه للإنترنت إلا بـ `PUBLIC_MODE=1` (تحت).
+
+## النشر على Coolify (مع DeepSeek)
+
+النسخة العامة تشغّل `PUBLIC_MODE=1` (مفعّل في الـ Dockerfile): حساب XBloom يبقى في متصفح كل زائر، والسيرفر يقدّم التطبيق والذكاء الاصطناعي فقط. مسارات الحساب والوصفات والمجتمع على السيرفر تُقفل، ومفتاح DeepSeek ما يطلع للمتصفح، ولكل زائر حد طلبات بالساعة.
+
+1. في Coolify: **+ New → Public Repository** → `https://github.com/mowshcashy/XBAI` فرع `master`.
+2. **Build Pack**: `Dockerfile` — **Base Directory**: `/xbloom-app` — **Ports Exposes**: `8787`.
+3. **Environment Variables**:
+   - `DEEPSEEK_API_KEY` = مفتاحك من platform.deepseek.com (علّمه Secret)
+   - اختياري: `DEEPSEEK_MODEL` (الافتراضي `deepseek-flash` ويقرأ صور الأكياس)، `AI_RATE_LIMIT` (الافتراضي 30 طلب بالساعة لكل زائر، `0` بدون حد)
+4. **Domains**: حط دومينك بـ `https://` — البلوتوث في المتصفح ما يشتغل إلا على HTTPS، وCoolify يطلع الشهادة تلقائياً.
+5. **Deploy**. فعّل Auto Deploy عشان كل push على GitHub ينشر تلقائياً.
+
+تأكد بعد النشر: `https://دومينك/api/ai/status` لازم يرجع `"deepseek":true`.
 - هذا التطبيق مستقل عن دالة Supabase في `xbloom-mcp-remote/`؛ كلاهما يستخدم نفس XBloom API.

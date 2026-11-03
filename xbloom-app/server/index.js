@@ -11,6 +11,7 @@ const xbloom = require("./xbloom");
 const brew   = require("./brew");
 const ollama = require("./ollama"); // VISION_MODELS exposed for /api/assist
 const openrouter = require("./openrouter");
+const deepseek = require("./deepseek");
 const store = require("./store");
 const community = require("./community");
 const { SYSTEM_PROMPT, RECIPE_SCHEMA } = require("./prompt");
@@ -20,10 +21,53 @@ const beans = require("./beans");
 const app = express();
 const PORT = Number(process.env.PORT || 8787);
 
+// PUBLIC_MODE=1 for a shared deployment (Coolify, any VPS). The XBloom session store
+// on this server is a single file, so account endpoints would leak one user's
+// recipes to everyone; in public mode accounts stay in each visitor's browser and
+// the server only serves the app and the AI (DeepSeek, key kept server-side).
+const PUBLIC = /^(1|true|yes)$/i.test(process.env.PUBLIC_MODE || "");
+const AI_LIMIT = Number(process.env.AI_RATE_LIMIT || 30); // AI requests per visitor per hour
+
+app.set("trust proxy", true);
 app.use(express.json({ limit: "15mb" }));
 // No HTTP caching so the browser always picks up the latest files.
 app.use((req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 app.use(express.static(path.join(__dirname, "..", "public")));
+
+app.get("/api/health", (req, res) => res.json({ ok: true }));
+
+app.get("/api/ai/status", (req, res) => {
+  res.json({
+    deepseek: deepseek.hasKey(),
+    model: deepseek.DEFAULT_MODEL,
+    vision: deepseek.supportsVision(),
+    public: PUBLIC,
+  });
+});
+
+if (PUBLIC) {
+  const OPEN = new Set(["/api/health", "/api/ai/status", "/api/assist"]);
+  app.use("/api", (req, res, next) => {
+    if (OPEN.has(req.originalUrl.split("?")[0])) return next();
+    res.status(404).json({ error: "غير متاح على النسخة العامة" });
+  });
+}
+
+// Simple per-IP hourly budget so a public AI endpoint can't drain the API balance.
+const aiHits = new Map();
+function aiRateLimit(req, res, next) {
+  if (!PUBLIC || AI_LIMIT <= 0) return next();
+  const now = Date.now();
+  const entry = aiHits.get(req.ip);
+  if (!entry || now > entry.reset) {
+    aiHits.set(req.ip, { count: 1, reset: now + 3600_000 });
+  } else if (++entry.count > AI_LIMIT) {
+    const mins = Math.ceil((entry.reset - now) / 60000);
+    return res.status(429).json({ error: `وصلت الحد المسموح من طلبات الذكاء الاصطناعي. جرّب بعد ${mins} دقيقة.` });
+  }
+  if (aiHits.size > 5000) for (const [ip, e] of aiHits) if (now > e.reset) aiHits.delete(ip);
+  next();
+}
 
 const route = (fn) => (req, res) =>
   fn(req, res).catch((e) => {
@@ -290,10 +334,17 @@ function visionCandidateModels(selected, available) {
   return order.filter((m, i) => m && order.indexOf(m) === i && (avail.size === 0 || avail.has(m)));
 }
 
-app.post("/api/assist", async (req, res) => {
-  const { message, model, provider, history, image } = req.body || {};
-  const useOpenRouter = provider === "openrouter";
+app.post("/api/assist", aiRateLimit, async (req, res) => {
+  const { message, provider, history, image } = req.body || {};
+  // On a public deployment only DeepSeek (server key) is used, whatever the client asks for.
+  const useDeepseek = PUBLIC || provider === "deepseek";
+  const useOpenRouter = !useDeepseek && provider === "openrouter";
+  const model = useDeepseek ? deepseek.DEFAULT_MODEL : req.body?.model;
   if (!message && !image) return res.status(400).json({ error: "A message or an image is required." });
+  if (useDeepseek && !deepseek.hasKey()) return res.status(503).json({ error: "الذكاء الاصطناعي غير مفعّل على السيرفر" });
+  const providerName = useDeepseek ? "DeepSeek" : useOpenRouter ? "OpenRouter" : "Ollama";
+  // deepseek-flash reads the bag photo itself, in the same request as the recipe.
+  const directImage = useDeepseek && image && deepseek.supportsVision(model) ? image : null;
 
   res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
@@ -308,10 +359,18 @@ app.post("/api/assist", async (req, res) => {
   const userText = String(message || "صمم لي وصفة من هذه الصورة");
 
   // ---- Step 1: read the attached photo ----
-  if (image) {
+  if (image && directImage) {
+    send({ type: "token", data: "أقرأ صورة الكيس…\n\n" });
+  } else if (image) {
     send({ type: "token", data: "جاري قراءة الصورة…\n\n" });
 
-    if (useOpenRouter) {
+    if (useDeepseek) {
+      try {
+        const { ocrImage } = require("./ocr");
+        const text = await ocrImage(image);
+        label = text ? `OCR text from the label:\n${text}` : "";
+      } catch { /* continue with text only */ }
+    } else if (useOpenRouter) {
       try {
         label = await openrouter.chat(
           [{ role: "user", content: LABEL_PROMPT }],
@@ -356,7 +415,7 @@ app.post("/api/assist", async (req, res) => {
   // ---- Step 2: design the recipe with the selected model ----
   // Bean memory recall: if this coffee was dialed-in before, tell the model.
   let beanHint = "";
-  try {
+  if (!PUBLIC) try {
     const matches = beans.find(userText + " " + label).slice(0, 2);
     if (matches.length) {
       const known = matches.map((b) => `${b.name} (${[b.origin, b.process, b.roast].filter(Boolean).join(", ")}): ${JSON.stringify(b.recipe)}`).join(" | ");
@@ -366,7 +425,9 @@ app.post("/api/assist", async (req, res) => {
 
   const enriched = beanHint + (label
     ? `Photo label details:\n${label}\n\nUser request: ${userText}`
-    : userText);
+    : directImage
+      ? `The attached photo is the coffee/tea bag: read origin, process, roast and tasting notes from it first.\n\nUser request: ${userText}`
+      : userText);
 
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
@@ -378,7 +439,14 @@ app.post("/api/assist", async (req, res) => {
 
   let raw = "";
   try {
-    if (useOpenRouter) {
+    if (useDeepseek) {
+      raw = await deepseek.chatStream(
+        messages,
+        { model, temperature: 0.4, image: directImage, json: true },
+        (token) => send({ type: "token", data: token }),
+        abort.signal,
+      );
+    } else if (useOpenRouter) {
       raw = await openrouter.chatStream(
         messages,
         { model, temperature: 0.4 },
@@ -395,7 +463,7 @@ app.post("/api/assist", async (req, res) => {
     }
   } catch (e) {
     if (abort.signal.aborted) { try { res.end(); } catch {} return; }
-    send({ type: "error", error: `${useOpenRouter ? "OpenRouter" : "Ollama"} error: ${String(e.message || e)}` });
+    send({ type: "error", error: `${providerName} error: ${String(e.message || e)}` });
     res.end();
     return;
   }
@@ -412,7 +480,9 @@ app.post("/api/assist", async (req, res) => {
         { role: "assistant", content: raw },
         { role: "user", content: "أجب بـ JSON خام فقط: كائن واحد بين أقواس معقوفة، بدون أي نص أو markdown." },
       ];
-      const repair = useOpenRouter
+      const repair = useDeepseek
+        ? await deepseek.chat(repairMessages, { model, temperature: 0.1, json: true })
+        : useOpenRouter
         ? await openrouter.chat(repairMessages, { model, temperature: 0.1 })
         : await ollama.chat(repairMessages, { model, temperature: 0.1, format: RECIPE_SCHEMA });
       recipe = normalizeRecipe(extractJson(repair));
@@ -427,7 +497,7 @@ app.post("/api/assist", async (req, res) => {
   else {
     send({ type: "recipe", recipe });
     // Learn: remember a coffee when the user explicitly names it (dialed-in learning).
-    try {
+    if (!PUBLIC) try {
       const named = /اسم\s*(?:الحبة|القهوة)?[:：]?\s*([^\n,.]{2,60})/i.exec(userText) || (label ? /^([^|\n]{2,60})$/m.exec(label) : null);
       if (named) {
         beans.remember({
@@ -477,7 +547,8 @@ app.get("/api/openrouter/models", route(async (req, res) => {
 }));
 
 app.listen(PORT, () => {
-  console.log(`\n  XBloom dashboard  ->  http://localhost:${PORT}`);
+  console.log(`\n  XBloom dashboard  ->  http://localhost:${PORT}${PUBLIC ? "  (PUBLIC MODE)" : ""}`);
+  console.log(`  DeepSeek          ->  ${deepseek.hasKey() ? `✓ ${deepseek.DEFAULT_MODEL}` : "not set"}`);
   console.log(`  Ollama endpoint   ->  ${ollama.OLLAMA_URL}${ollama.CLOUD ? " (cloud, API key set)" : ""}`);
   console.log(`  Default AI model  ->  ${ollama.DEFAULT_MODEL}`);
   console.log(`  OpenRouter key    ->  ${openrouter.hasKey() ? "✓ set" : "not set (cloud AI disabled)"}`);

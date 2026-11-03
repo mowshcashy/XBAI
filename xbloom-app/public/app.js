@@ -672,7 +672,20 @@ $("#aiDescInput").addEventListener("input", () => {
 });
 
 // The AI is optional: only call it when a model is actually configured.
+// A hosted server (Coolify) can carry a DeepSeek key; then every visitor gets the AI
+// with no setup. GitHub Pages has no server, so this stays null there.
+let SERVER_AI = null;
+fetch("api/ai/status").then((r) => (r.ok ? r.json() : null)).then((s) => {
+  SERVER_AI = s;
+  if (s?.deepseek) {
+    $("#assistHint").textContent = "الذكاء الاصطناعي مفعّل (DeepSeek) ويقرأ صور الأكياس. ما يحتاج أي إعداد.";
+    $(".ai-advanced .provider-bar")?.classList.add("hidden");
+    $("#orKeyBanner")?.classList.add("hidden");
+  }
+}).catch(() => {});
+
 function aiReady() {
+  if (SERVER_AI?.deepseek) return true;
   const model = $("#modelSelect")?.value;
   if (!model) return false;
   if (IS_STATIC && state.provider === "openrouter") return !!settings.orKey;
@@ -682,7 +695,8 @@ function aiReady() {
 
 async function askAi(text, image) {
   let fullText = "", gotRecipe = null, gotError = null;
-  if (IS_STATIC) {
+  const viaDeepseek = !!SERVER_AI?.deepseek;
+  if (IS_STATIC && !viaDeepseek) {
     await runAssistStatic(
       text, image, { querySelector: () => null }, document.createElement("span"),
       (t) => { fullText += t; },
@@ -691,12 +705,16 @@ async function askAi(text, image) {
     );
     return { fullText, gotRecipe, gotError };
   }
-  const resp = await fetch("/api/assist", {
+  const resp = await fetch("api/assist", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message: text, model: $("#modelSelect").value || undefined, provider: state.provider, history: [], image: image || undefined }),
+    body: JSON.stringify({ message: text, model: viaDeepseek ? undefined : ($("#modelSelect").value || undefined), provider: viaDeepseek ? "deepseek" : state.provider, history: [], image: image || undefined }),
   });
-  if (!resp.ok || !resp.body) return { fullText, gotRecipe, gotError: `HTTP ${resp.status}` };
+  if (!resp.ok || !resp.body) {
+    const err = (await resp.json().catch(() => ({}))).error || `HTTP ${resp.status}`;
+    if (resp.status === 429) toast(err, "bad");
+    return { fullText, gotRecipe, gotError: err };
+  }
   const reader = resp.body.getReader();
   const dec = new TextDecoder();
   let buf = "";
@@ -789,7 +807,7 @@ $("#chatForm").addEventListener("submit", async (e) => {
       await runAssistStatic(text, image, live, timerEl, (t) => { liveText += t; setMsgText(live, liveText || "…"); live.querySelector("p:last-child")?.appendChild(timerEl); },
         (r) => { gotRecipe = r; }, (e) => { gotError = e; });
     } else {
-      const resp = await fetch("/api/assist", {
+      const resp = await fetch("api/assist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
