@@ -1,15 +1,31 @@
 // Ollama bridge — native HTTP API, with streaming + image (vision) support.
 
-const OLLAMA_URL = (process.env.OLLAMA_URL || "http://127.0.0.1:11434").replace(/\/+$/, "");
+// With OLLAMA_API_KEY set, talk to Ollama Cloud directly (no local daemon needed).
+const API_KEY = process.env.OLLAMA_API_KEY || "";
+const CLOUD = !!API_KEY;
+const OLLAMA_URL = (process.env.OLLAMA_URL || (CLOUD ? "https://ollama.com" : "http://127.0.0.1:11434")).replace(/\/+$/, "");
 
-// Models known to accept image input (verified on this machine via /api/chat probe).
-const VISION_MODELS = ["kimi-k3:cloud", "minimax-m3:cloud", "gemma4:31b-cloud"];
+// Cloud default: gemma4:31b — the smallest Ollama Cloud chat model with vision,
+// so it uses the least of the plan's usage while still reading bag photos.
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL || (CLOUD ? "gemma4:31b" : "gemma3:4b");
+
+// Models known to accept image input (verified via /api/show capabilities).
+const VISION_MODELS = CLOUD
+  ? [DEFAULT_MODEL, "gemma4:31b", "glm-5.3-flash"]
+  : ["kimi-k3:cloud", "minimax-m3:cloud", "gemma4:31b-cloud"];
+
+const headers = () => ({
+  "Content-Type": "application/json",
+  ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
+});
 
 async function listModels() {
-  const resp = await fetch(`${OLLAMA_URL}/api/tags`);
+  const resp = await fetch(`${OLLAMA_URL}/api/tags`, { headers: headers() });
   if (!resp.ok) throw new Error(`Ollama returned HTTP ${resp.status}`);
   const data = await resp.json();
-  return (data.models || []).map((m) => m.name);
+  const names = (data.models || []).map((m) => m.name);
+  // Default first so the picker lands on it
+  return names.includes(DEFAULT_MODEL) ? [DEFAULT_MODEL, ...names.filter((n) => n !== DEFAULT_MODEL)] : names;
 }
 
 // Strip the data-URL prefix and keep the raw base64 payload Ollama expects.
@@ -35,7 +51,7 @@ function withImages(messages, image) {
 
 async function chat(messages, { model, temperature = 0.7, format, image } = {}) {
   const body = {
-    model: model || process.env.OLLAMA_MODEL || "gemma3:4b",
+    model: model || DEFAULT_MODEL,
     messages: image ? withImages(messages, image) : messages,
     stream: false,
     options: { temperature },
@@ -43,7 +59,7 @@ async function chat(messages, { model, temperature = 0.7, format, image } = {}) 
   if (format) body.format = format;
   const resp = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: headers(),
     body: JSON.stringify(body),
   });
   if (!resp.ok) {
@@ -57,7 +73,7 @@ async function chat(messages, { model, temperature = 0.7, format, image } = {}) 
 // Streaming chat — onChunk(token) fires as tokens arrive; returns the full text.
 async function chatStream(messages, { model, temperature = 0.5, format, image }, onChunk, signal) {
   const body = {
-    model: model || process.env.OLLAMA_MODEL || "gemma3:4b",
+    model: model || DEFAULT_MODEL,
     messages: image ? withImages(messages, image) : messages,
     stream: true,
     options: { temperature },
@@ -66,7 +82,7 @@ async function chatStream(messages, { model, temperature = 0.5, format, image },
 
   const resp = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: headers(),
     body: JSON.stringify(body),
     signal,
   });
@@ -97,4 +113,4 @@ async function chatStream(messages, { model, temperature = 0.5, format, image },
   return full;
 }
 
-module.exports = { listModels, chat, chatStream, OLLAMA_URL, VISION_MODELS };
+module.exports = { listModels, chat, chatStream, OLLAMA_URL, VISION_MODELS, DEFAULT_MODEL, CLOUD };

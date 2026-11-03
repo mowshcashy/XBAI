@@ -302,9 +302,15 @@
       r.name = `آيس ${String(r.name || "").replace(/^آيس\s*/, "")} (ثلج ${ice}g)`.slice(0, 60);
       r.notes = `${r.notes || ""} قبل التشغيل حط ${ice}g ثلج في الكوب — الماء الحار يذوب الثلج ويطلع ${total}ml قهوة باردة.`.trim();
     }
-    if (r.ice_g && !String(r.name || "").includes("ثلج")) {
-      const suffix = ` (ثلج ${Math.round(r.ice_g)}g)`;
-      r.name = String(r.name || "آيس").slice(0, 60 - suffix.length) + suffix;
+    if (r.ice_g) {
+      let n = String(r.name || "آيس").replace(/\s*·\s*ice\s*\d+\s*g$/i, "");
+      if (/[؀-ۿ]/.test(n)) n = n.replace(/^Iced\s+/i, "آيس ");
+      n = n.replace(/^(?:(?:آيس|Iced)\s+)+/i, (m) => m.trim().split(/\s+/)[0] + " ");
+      if (!/ثلج\s*\d+\s*g/.test(n)) {
+        const suffix = ` (ثلج ${Math.round(r.ice_g)}g)`;
+        n = n.slice(0, 60 - suffix.length) + suffix;
+      }
+      r.name = n;
     }
     const water = r.pours.reduce((a, p) => a + p.volume_ml, 0);
     r.ratio = Number((water / r.dose_g).toFixed(1));
