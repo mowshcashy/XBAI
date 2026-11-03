@@ -391,6 +391,79 @@
     showRecipeResult(spec, `من مكتبة المحامص: ${ref.roaster}`);
   });
 
+  // ════════════════ camera: photograph the bag label ════════════════
+  // Live camera inside the app; if the browser won't give one (no permission, no
+  // camera, iOS in-app browsers) fall back to the phone's own camera via capture=.
+  let camStream = null, camFrom = null;
+  const camView = $("#cameraView"), camVideo = $("#camVideo");
+
+  function stopCamera() {
+    camStream?.getTracks().forEach((t) => t.stop());
+    camStream = null;
+    camVideo.srcObject = null;
+    camView.classList.add("hidden");
+    document.body.classList.remove("cam-open");
+  }
+
+  // Image chosen → attach it; from the home box, design straight away.
+  function useImage(dataUrl) {
+    setAiImage(dataUrl);
+    stopCamera();
+    if (camFrom === "home") designFromHome($("#homeAiInput").value.trim());
+    else toast("تم التصوير ✓ اضغط «صمّم الوصفة»");
+  }
+
+  async function openCamera(from) {
+    camFrom = from;
+    const canLive = !!(navigator.mediaDevices?.getUserMedia && window.isSecureContext);
+    if (!canLive) { $("#camCapture").click(); return; }
+    $("#camHint").textContent = "وجّه الكاميرا على ملصق الكيس";
+    camView.classList.remove("hidden");
+    document.body.classList.add("cam-open");
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+      });
+      camVideo.srcObject = camStream;
+      await camVideo.play().catch(() => {});
+    } catch (err) {
+      stopCamera();
+      if (err?.name === "NotAllowedError") toast("اسمح للتطبيق باستخدام الكاميرا من إعدادات المتصفح، أو اختر صورة", "bad");
+      $("#camCapture").click();
+    }
+  }
+
+  function snap() {
+    if (!camStream || !camVideo.videoWidth) return;
+    const max = 1280;
+    const k = Math.min(1, max / Math.max(camVideo.videoWidth, camVideo.videoHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(camVideo.videoWidth * k);
+    canvas.height = Math.round(camVideo.videoHeight * k);
+    canvas.getContext("2d").drawImage(camVideo, 0, 0, canvas.width, canvas.height);
+    camView.classList.add("flash");
+    setTimeout(() => camView.classList.remove("flash"), 180);
+    useImage(canvas.toDataURL("image/jpeg", 0.85));
+  }
+
+  async function fromFile(input) {
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { toast("اختر صورة", "bad"); return; }
+    try { useImage(await downscaleImage(await fileToDataURL(file))); }
+    catch { toast("تعذّر قراءة الصورة", "bad"); }
+  }
+
+  $$("[data-camera]").forEach((b) => b.addEventListener("click", () => openCamera(b.dataset.camera)));
+  $("#camSnap").addEventListener("click", snap);
+  $("#camClose").addEventListener("click", stopCamera);
+  $("#camGallery").addEventListener("change", (e) => fromFile(e.target));
+  $("#camCapture").addEventListener("change", (e) => fromFile(e.target));
+  document.addEventListener("visibilitychange", () => { if (document.hidden && camStream) stopCamera(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && camStream) stopCamera(); });
+
   // ════════════════ installable app ════════════════
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
     window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));

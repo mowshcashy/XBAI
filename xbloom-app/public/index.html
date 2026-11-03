@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&family=Inter+Tight:wght@400;500;600&family=Instrument+Serif&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20" />
+<link rel="stylesheet" href="styles.css?v=21" />
 <meta name="theme-color" content="#ffffff" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon-192.png" />
@@ -330,10 +330,10 @@
               <textarea id="aiDescInput" class="ai-desc-input" rows="3"
                 placeholder="مثال: قهوة إثيوبية باردة، تحميص فاتح، أبيها قوية"></textarea>
               <div class="ai-composer-bar">
-                <label class="ai-upload-lbl" for="aiImgFile">
-                  <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                  صورة الكيس
-                </label>
+                <div class="ai-photo-acts">
+                  <button type="button" class="ai-upload-lbl" data-camera="ai"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> صوّر الكيس</button>
+                  <label class="ai-upload-lbl" for="aiImgFile"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/></svg> من الصور</label>
+                </div>
                 <span class="ai-drop-hint">أو اسحب الصورة هنا</span>
               </div>
               <input type="file" id="aiImgFile" accept="image/*" class="hidden" />
@@ -804,9 +804,9 @@
         </div>
         <form class="ask" id="homeAiForm">
           <input id="homeAiInput" type="text" autocomplete="off" placeholder="أو اكتب: إثيوبي فاتح بارد لكوبين" />
-          <label class="ask-photo" for="homeImgFile" aria-label="أضف صورة الكيس" title="أضف صورة الكيس">
+          <button class="ask-photo" type="button" data-camera="home" aria-label="صوّر الكيس" title="صوّر الكيس">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-          </label>
+          </button>
           <input type="file" id="homeImgFile" accept="image/*" class="hidden" />
           <button class="ask-go" type="submit" aria-label="صمّم الوصفة">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
@@ -956,6 +956,19 @@
   </div>
 </div>
 
+<div id="cameraView" class="camera hidden" role="dialog" aria-modal="true" aria-label="صوّر الكيس">
+  <video id="camVideo" playsinline autoplay muted></video>
+  <div class="cam-frame" aria-hidden="true"></div>
+  <p class="cam-hint" id="camHint">وجّه الكاميرا على ملصق الكيس</p>
+  <div class="cam-bar">
+    <label class="cam-side" for="camGallery"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/></svg><span>الصور</span></label>
+    <button id="camSnap" class="cam-snap" type="button" aria-label="التقط الصورة"></button>
+    <button id="camClose" class="cam-side" type="button"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg><span>إلغاء</span></button>
+  </div>
+  <input type="file" id="camGallery" accept="image/*" class="hidden" />
+  <input type="file" id="camCapture" accept="image/*" capture="environment" class="hidden" />
+</div>
+
 <div id="brewModal" class="modal hidden">
   <div class="modal-box brew-modal-box">
     <div class="brew-modal-head">
@@ -1000,10 +1013,10 @@
   </div>
 </div>
 
-<script src="recipe-engine.js?v=20"></script>
-<script src="xbloom-web.js?v=20"></script>
-<script src="xbloom-ble.js?v=20"></script>
-<script src="app.js?v=20"></script>
-<script src="studio.js?v=20"></script>
+<script src="recipe-engine.js?v=21"></script>
+<script src="xbloom-web.js?v=21"></script>
+<script src="xbloom-ble.js?v=21"></script>
+<script src="app.js?v=21"></script>
+<script src="studio.js?v=21"></script>
 </body>
 </html>
