@@ -58,10 +58,12 @@
   ];
 
   const ROASTS = {
-    light:       { label: "فاتح",        temp: 94, grind: 62, ratio: 15.5, rpm: 100, bloomX: 2.5, bloomPause: 45, mains: 3, pattern: "spiral",   pauses: [20, 15, 0], color: "#D4BFA0" },
-    medium:      { label: "متوسط",       temp: 91, grind: 72, ratio: 15.5, rpm: 90,  bloomX: 2.5, bloomPause: 40, mains: 3, pattern: "circular", pauses: [15, 10, 0], color: "#B08968" },
-    medium_dark: { label: "متوسط غامق",  temp: 89, grind: 80, ratio: 16,   rpm: 85,  bloomX: 2.2, bloomPause: 35, mains: 2, pattern: "circular", pauses: [10, 0],     color: "#8B5E3C" },
-    dark:        { label: "غامق",        temp: 87, grind: 88, ratio: 16.5, rpm: 80,  bloomX: 2.0, bloomPause: 30, mains: 2, pattern: "circular", pauses: [10, 0],     color: "#6F4E37" },
+    // Calibrated on 487 Saudi roasters' XBloom recipes: hot median grind 55, 100 rpm,
+    // ratio 1:15, 91°C, bloom ≈ 2.3× dose with a 20-30 s pause, 4 pours.
+    light:       { label: "فاتح",        temp: 93, grind: 52, ratio: 15.5, rpm: 110, bloomX: 2.5, bloomPause: 30, mains: 3, pattern: "spiral",   pauses: [20, 15, 0], color: "#D4BFA0" },
+    medium:      { label: "متوسط",       temp: 91, grind: 56, ratio: 15,   rpm: 100, bloomX: 2.3, bloomPause: 25, mains: 3, pattern: "circular", pauses: [15, 15, 0], color: "#B08968" },
+    medium_dark: { label: "متوسط غامق",  temp: 90, grind: 60, ratio: 15,   rpm: 90,  bloomX: 2.2, bloomPause: 20, mains: 2, pattern: "circular", pauses: [15, 0],     color: "#8B5E3C" },
+    dark:        { label: "غامق",        temp: 88, grind: 64, ratio: 15.5, rpm: 80,  bloomX: 2.0, bloomPause: 20, mains: 2, pattern: "circular", pauses: [10, 0],     color: "#6F4E37" },
   };
   const PROCESS_LABEL = { washed: "مغسول", natural: "طبيعي", honey: "عسلي", anaerobic: "لاهوائي" };
 
@@ -152,34 +154,35 @@
     const iced = i.serve === "iced";
     let grind = R.grind, temp = R.temp, ratio = R.ratio, bloomX = R.bloomX, bloomPause = R.bloomPause;
 
-    if (i.process === "washed") grind -= 3;
-    if (i.process === "natural" || i.process === "honey") { grind += 4; ratio -= 0.3; }
-    if (i.process === "anaerobic") { grind += 5; temp -= 1; ratio -= 0.3; }
+    if (i.process === "washed") grind -= 2;
+    if (i.process === "natural" || i.process === "honey") { grind += 2; ratio -= 0.3; }
+    if (i.process === "anaerobic") { grind += 3; temp -= 1; ratio -= 0.3; }
     if (i.strength === "strong") ratio -= 1.5;
     if (i.strength === "weak") ratio += 1.5;
     if (i.fresh) { bloomX += 0.5; bloomPause += 10; }
     if (i.ratio) ratio = i.ratio;
 
-    const perCup = iced ? 18 : 15;
+    const perCup = iced ? 17 : 15;
     let dose = i.dose || (i.cups >= 2 ? (iced ? 25 : 24) : i.cups > 1 ? (iced ? 22 : 20) : perCup);
     dose = clamp(round(dose), 8, 31);
 
     let total;
     if (i.totalMl) total = i.totalMl;
-    else if (iced) total = dose * (ratio - 0.5);
+    else if (iced) total = dose * (ratio + 1);
     else total = dose * ratio;
     total = Math.round(clamp(total, dose * 8, dose * 20));
 
     let ice = 0, hotWater = total;
     if (iced) {
-      ice = round(total * 0.4, 5);
-      hotWater = total - ice;
-      grind -= 6;
+      // Roasters' iced median: hot water ≈ 10× dose (59% of the drink), ice ≈ 6.7× dose.
+      hotWater = Math.round(total * 0.6);
+      ice = round(total - hotWater, 5);
+      grind -= 5;
       temp += 1;
-      bloomX = Math.min(bloomX, 2);
-      bloomPause = Math.min(bloomPause, 35);
+      bloomX = Math.min(bloomX, 2.3);
+      bloomPause = 30;
     }
-    grind = clamp(Math.round(grind), 40, 120);
+    grind = clamp(Math.round(grind), 1, 120);
     temp = clamp(Math.round(temp), 80, 95);
 
     const bloom = Math.round(dose * bloomX);
@@ -220,7 +223,7 @@
 
     return {
       kind: "coffee", name: name.slice(0, 60), notes,
-      dose_g: dose, ratio: machineRatio, grind_size: grind, grind_rpm: R.rpm,
+      dose_g: dose, ratio: machineRatio, grind_size: grind, grind_rpm: iced ? Math.max(60, R.rpm - 15) : R.rpm,
       color: iced ? "#9FC5E8" : R.color,
       roast: i.roast === "medium_dark" ? "dark" : i.roast, process: i.process || undefined,
       serve: i.serve, ice_g: ice || undefined, total_ml: total,
@@ -283,7 +286,7 @@
     const r = { ...recipe };
     if (r.kind === "tea" || !Array.isArray(r.pours) || !r.pours.length) return { ...r, serve: r.serve || intent?.serve || "hot" };
     r.dose_g = clamp(Number(r.dose_g) || 15, 1, 31);
-    r.grind_size = clamp(Math.round(Number(r.grind_size) || 70), 40, 120);
+    r.grind_size = clamp(Math.round(Number(r.grind_size) || 55), 1, 120);
     r.grind_rpm = clamp(Math.round(Number(r.grind_rpm) || 80), 60, 120);
     r.pours = r.pours.slice(0, 7).map((p) => ({ ...p, temperature_c: clamp(Math.round(Number(p.temperature_c) || 92), 40, 95) }));
     const sum = r.pours.reduce((a, p) => a + (Number(p.volume_ml) || 0), 0);
@@ -298,7 +301,7 @@
       r.pours = r.pours.map((p, idx) => ({ ...p, volume_ml: idx === 0 ? bloom : Math.max(5, Math.round(p.volume_ml * k)) }));
       r.ice_g = ice;
       r.total_ml = total;
-      r.grind_size = clamp(r.grind_size - 6, 40, 120);
+      r.grind_size = clamp(r.grind_size - 5, 1, 120);
       r.name = `آيس ${String(r.name || "").replace(/^آيس\s*/, "")} (ثلج ${ice}g)`.slice(0, 60);
       r.notes = `${r.notes || ""} قبل التشغيل حط ${ice}g ثلج في الكوب — الماء الحار يذوب الثلج ويطلع ${total}ml قهوة باردة.`.trim();
     }
@@ -318,5 +321,116 @@
     return r;
   }
 
-  window.XBRecipe = { parse, build, design, hint, finalize };
+  // ---------- reference library: the roasters' own recipes ----------
+  let REF = [];
+  const STOP = new Set(kw(
+    "وصفه", "جديده", "قهوه", "قهوتي", "بارد", "بارده", "حار", "حاره", "مثلج", "مثلجه", "ايس", "ثلج", "بن",
+    "ابي", "ابغى", "ابغي", "ودي", "سو", "سوي", "سولي", "اعطني", "عطني", "لي", "من", "في", "مع", "على", "كوب", "كوبين",
+    "قوي", "قويه", "خفيف", "خفيفه", "محمصه", "recipe", "iced", "ice", "hot", "cold", "new", "the", "coffee",
+    "draft", "by", "for", "roastery", "roasters", "with", "بواسطه",
+    "توازن", "حلاوه", "وضوح", "قوام",
+  ));
+  const DECAF = kw("ديكاف", "دي كاف", "decaf");
+  const STYLE_WORDS = { [norm("توازن")]: "balance", [norm("حلاوة")]: "sweet", [norm("وضوح")]: "clarity", [norm("قوام")]: "body" };
+  const styleOf = (text) => { const n = norm(text); return Object.keys(STYLE_WORDS).find((k) => n.includes(k)) || null; };
+  const tokens = (text) => norm(text).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w));
+
+  function setReference(list) {
+    REF = (list || []).filter((r) => !r.tea && r.dose && r.pours?.length).map((r) => ({
+      ...r,
+      _tok: tokens(r.name),
+      _rtok: tokens(r.roaster),
+      _decaf: has(norm(r.name), DECAF),
+      _origin: (ORIGINS.find((o) => has(norm(r.name), o.words)) || {}).id || null,
+      _style: styleOf(r.name),
+    }));
+  }
+
+  // Best roaster recipes for a request. `relevance` counts only real matches
+  // (bean/farm/origin/roaster/style words), not the serve or approval bonus.
+  function match(text, intent, limit = 3) {
+    if (!REF.length || intent.kind !== "coffee") return [];
+    const words = tokens(text);
+    const style = styleOf(text);
+    const wantsDecaf = has(norm(text), DECAF);
+    const hits = (r) => words.filter((w) => r._tok.some((x) => x === w || (w.length >= 4 && x.length >= 4 && (x.startsWith(w) || w.startsWith(x))))).length;
+    return REF
+      .filter((r) => r.serve === intent.serve)
+      .map((r) => {
+        let relevance = hits(r) * 3 + words.filter((w) => r._rtok.includes(w)).length * 5;
+        if (r._decaf && !wantsDecaf) relevance -= 4;
+        if (intent.origin && r._origin === intent.origin.id) relevance += 3;
+        if (style && r._style === style) relevance += 2;
+        return { r, relevance, score: relevance + (r.approved ? 1 : 0) };
+      })
+      .filter((m) => m.relevance > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+  }
+
+  function fromReference(ref, i) {
+    const iced = ref.serve === "iced";
+    let dose = i.dose || (i.cups >= 2 ? Math.min(25, Math.round(ref.dose * 1.6)) : i.cups > 1 ? Math.round(ref.dose * 1.25) : ref.dose);
+    dose = clamp(dose, 8, 31);
+    const k = dose / ref.dose;
+    const sk = i.strength === "strong" ? 0.9 : i.strength === "weak" ? 1.1 : 1;
+    const pours = ref.pours.map((p, idx) => ({
+      name: idx === 0 ? "Bloom" : `Pour ${idx + 1}`,
+      volume_ml: Math.max(5, Math.round(p.v * k * (idx === 0 ? 1 : sk))),
+      temperature_c: clamp(Math.round(p.t), 40, 95),
+      pattern: p.pat || "circular",
+      flow_rate: p.flow || 3,
+      pause_seconds: p.p || 0,
+      agitate_before: false,
+      agitate_after: !!p.ag,
+    }));
+    const water = pours.reduce((a, p) => a + p.volume_ml, 0);
+    const ice = iced ? round((ref.ice || water * 0.65) * k, 5) : 0;
+    let name = ref.name;
+    if (iced && !/ثلج\s*\d+/.test(name)) name = `${name} (ثلج ${ice}g)`;
+    if (i.cups >= 2) name = `${name} لكوبين`;
+    let notes = `مبنية على وصفة «${ref.name}» من ${ref.roaster}${ref.approved ? " (معتمدة من المحمصة)" : ""}: `
+      + `${dose}g بن، ${water}ml ماء${ice ? ` و${ice}g ثلج` : ""}، حرارة ${pours[0].temperature_c}°، طحن ${ref.grind ?? "—"}.`;
+    if (iced) notes += ` قبل التشغيل حط ${ice}g ثلج في الكوب.`;
+    if (k !== 1) notes += ` كبّرت الكمية من ${ref.dose}g إلى ${dose}g بنفس النسب.`;
+    if (sk !== 1) notes += sk < 1 ? " خليتها أقوى بماء أقل." : " خليتها أخف بماء أكثر.";
+    return {
+      kind: "coffee", name: name.slice(0, 60), notes,
+      dose_g: dose, ratio: Number((water / dose).toFixed(1)),
+      grind_size: clamp(Math.round(ref.grind ?? 55), 1, 120), grind_rpm: clamp(Math.round(ref.rpm ?? 100), 60, 120),
+      color: ref.color || (iced ? "#9FC5E8" : "#B08968"),
+      serve: ref.serve, ice_g: ice || undefined, total_ml: water + ice,
+      basedOn: { name: ref.name, roaster: ref.roaster, approved: ref.approved, link: ref.link },
+      pours,
+    };
+  }
+
+  // Build on the closest roaster recipe when the request names a bean, farm, origin
+  // or roaster; otherwise fall back to the calibrated rules.
+  function compose(intent, text) {
+    const best = match(text, intent, 1)[0];
+    return best && best.relevance >= 3 ? fromReference(best.r, intent) : build(intent);
+  }
+
+  const compact = (r) => ({
+    name: r.name, roaster: r.roaster, approved: r.approved, serve: r.serve, dose_g: r.dose, ice_g: r.ice || 0,
+    grind_size: r.grind, grind_rpm: r.rpm,
+    pours: r.pours.map((p) => [p.v, p.t, p.p, p.pat]),
+  });
+
+  // Reference block for the AI: the closest roaster recipes, or approved ones of the same serve.
+  function referenceHint(intent, text) {
+    if (!REF.length || intent.kind !== "coffee") return "";
+    let picks = match(text, intent, 3).map((m) => m.r);
+    if (!picks.length) picks = REF.filter((r) => r.serve === intent.serve && r.approved).slice(0, 3);
+    return [
+      "Reference recipes from Saudi roasters on the XBloom (treat them as the standard; pours are [ml, °C, pause s, pattern]):",
+      ...picks.map((r) => JSON.stringify(compact(r))),
+      "Library medians — hot: dose 18g, ratio 1:15, 91°C, grind 55, 100 rpm, bloom 2.3× dose, 4 pours. Iced: dose 17g, hot water ≈ 10× dose, ice ≈ 6.7× dose, 92°C, grind 50, ~82 rpm, 3 pours.",
+    ].join("\n");
+  }
+
+  const fromRef = (ref) => fromReference(ref, { cups: 1, strength: "balanced" });
+
+  window.XBRecipe = { parse, build, design, hint, finalize, setReference, match, compose, referenceHint, fromRef };
 })();

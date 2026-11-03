@@ -7,9 +7,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&family=Inter+Tight:wght@400;500;600&family=Instrument+Serif&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=19" />
+<link rel="stylesheet" href="styles.css?v=20" />
 <meta name="theme-color" content="#ffffff" />
 <link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="XBloom Studio" />
 </head>
 <body>
 
@@ -42,6 +45,14 @@
       <button class="mod-card" data-goto="recipes" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/></svg>
         <span>وصفاتي</span>
+      </button>
+      <button class="mod-card" data-goto="library" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M5 4h4v16H5zM10 4h4v16h-4z"/><path d="M15.5 5l3.6-1 2.4 15.4-3.6 1z"/></svg>
+        <span>مكتبة المحامص</span>
+      </button>
+      <button class="mod-card" data-goto="machine" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="13" y="3" width="7" height="17" rx="2"/><path d="M4 5h9v4H4z"/><path d="M6 9h5l-1 4H7z"/><path d="M3 21h18"/></svg>
+        <span>الجهاز</span>
       </button>
       <button class="mod-card" data-goto="import" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
@@ -155,17 +166,17 @@
 
         <!-- grind -->
         <div class="spec-row ctrl-row" data-coffee-only>
-          <span class="spec-label">درجة الطحن <small class="muted">(40 ناعم — 120 خشن)</small></span>
+          <span class="spec-label">درجة الطحن <small class="muted">(الأقل أنعم، الشائع 50 إلى 60)</small></span>
           <div class="stepper">
-            <button type="button" data-gstep="grind:-5" aria-label="أنعم">−</button>
-            <b id="grindBig">70</b>
-            <button type="button" data-gstep="grind:+5" aria-label="أخشن">+</button>
+            <button type="button" data-gstep="grind:-1" aria-label="أنعم">−</button>
+            <b id="grindBig">55</b>
+            <button type="button" data-gstep="grind:+1" aria-label="أخشن">+</button>
           </div>
-          <input type="range" id="grindRange" min="40" max="120" step="1" value="70" class="range" aria-label="درجة الطحن" />
+          <input type="range" id="grindRange" min="20" max="100" step="1" value="55" class="range" aria-label="درجة الطحن" />
           <div class="chips">
-            <button class="chip" data-gset="grind:60" type="button">ناعم 60</button>
-            <button class="chip" data-gset="grind:75" type="button">متوسط 75</button>
-            <button class="chip" data-gset="grind:90" type="button">خشن 90</button>
+            <button class="chip" data-gset="grind:48" type="button">ناعم 48</button>
+            <button class="chip" data-gset="grind:55" type="button">متوسط 55</button>
+            <button class="chip" data-gset="grind:64" type="button">خشن 64</button>
           </div>
         </div>
 
@@ -448,10 +459,13 @@
           <h1>وصفاتي</h1>
           <p class="muted">كل وصفاتك المتزامنة مع تطبيق XBloom</p>
         </div>
+        <div class="row">
+        <button class="btn" data-goto="manual" type="button">وصفة يدوية جديدة</button>
         <button id="reloadRecipes" class="btn btn-ghost-soft" type="button">
           <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
           تحديث
         </button>
+        </div>
       </div>
       <div id="recipeList" class="recipe-list">
         <div class="empty"><p class="muted">سجّل الدخول لعرض وصفاتك.</p></div>
@@ -604,6 +618,137 @@
       </div>
     </section>
 
+    <!-- ============ MACHINE (direct control) ============ -->
+    <section id="panel-machine" class="panel" style="display:none">
+      <div class="panel-head">
+        <div>
+          <h1>الجهاز</h1>
+          <p class="muted">تحكم مباشر بـ XBloom Studio عبر البلوتوث</p>
+        </div>
+        <button id="machineConnect" class="btn btn-accent" type="button">اتصل بالجهاز</button>
+      </div>
+
+      <div class="machine-display">
+        <div class="md-top">
+          <span class="md-state" id="mdState">غير متصل</span>
+          <span class="md-info" id="mdInfo"></span>
+        </div>
+        <div class="md-readouts">
+          <div><b class="num" id="mdCoffee">—</b><span>القهوة (g)</span></div>
+          <div><b class="num" id="mdWater">—</b><span>الماء (g)</span></div>
+          <div><b class="num" id="mdTemp">—</b><span>الحرارة (°C)</span></div>
+        </div>
+      </div>
+
+      <p class="machine-note">التحكم اليدوي تجريبي ومبني على بروتوكول مفتوح غير رسمي. الصب يطلع ماء حار، فتأكد إن الكوب في مكانه. وقفّل تطبيق XBloom في جوالك لأن الجهاز يقبل اتصال واحد بس.</p>
+
+      <div class="machine-grid">
+        <section class="mcard" id="mcGrinder">
+          <h2>الطاحونة</h2>
+          <div class="mc-field">
+            <span>درجة الطحن <small>(الأقل أنعم)</small></span>
+            <div class="stepper" data-step="grindSize" data-min="1" data-max="80" data-inc="1">
+              <button type="button" data-d="-1" aria-label="أنعم">−</button><b class="num" id="grindSize">50</b><button type="button" data-d="1" aria-label="أخشن">+</button>
+            </div>
+          </div>
+          <div class="mc-field">
+            <span>السرعة (RPM)</span>
+            <div class="opt-seg" data-mopt="rpm">
+              <button type="button" class="opt-btn" data-v="60">60</button>
+              <button type="button" class="opt-btn" data-v="80">80</button>
+              <button type="button" class="opt-btn active" data-v="100">100</button>
+              <button type="button" class="opt-btn" data-v="120">120</button>
+            </div>
+          </div>
+          <div class="mc-acts">
+            <button type="button" class="btn btn-accent" data-grinder="start">طحن</button>
+            <button type="button" class="btn" data-grinder="pause">إيقاف مؤقت</button>
+            <button type="button" class="btn" data-grinder="resume">استئناف</button>
+            <button type="button" class="btn btn-danger" data-grinder="stop">إيقاف</button>
+          </div>
+        </section>
+
+        <section class="mcard" id="mcBrewer">
+          <h2>الصب</h2>
+          <div class="mc-field">
+            <span>كمية الماء (ml)</span>
+            <div class="stepper" data-step="brewVol" data-min="10" data-max="500" data-inc="10">
+              <button type="button" data-d="-1" aria-label="أقل">−</button><b class="num" id="brewVol">100</b><button type="button" data-d="1" aria-label="أكثر">+</button>
+            </div>
+          </div>
+          <div class="mc-field">
+            <span>الحرارة (°C)</span>
+            <div class="stepper" data-step="brewTemp" data-min="40" data-max="95" data-inc="1">
+              <button type="button" data-d="-1" aria-label="أبرد">−</button><b class="num" id="brewTemp">93</b><button type="button" data-d="1" aria-label="أحر">+</button>
+            </div>
+          </div>
+          <div class="mc-field">
+            <span>التدفق (ml/s)</span>
+            <div class="opt-seg" data-mopt="flow">
+              <button type="button" class="opt-btn active" data-v="3">3.0</button>
+              <button type="button" class="opt-btn" data-v="3.2">3.2</button>
+              <button type="button" class="opt-btn" data-v="3.5">3.5</button>
+            </div>
+          </div>
+          <div class="mc-field">
+            <span>النمط</span>
+            <div class="opt-seg" data-mopt="pattern">
+              <button type="button" class="opt-btn" data-v="centered">مركزي</button>
+              <button type="button" class="opt-btn active" data-v="circular">دائري</button>
+              <button type="button" class="opt-btn" data-v="spiral">حلزوني</button>
+            </div>
+          </div>
+          <div class="mc-acts">
+            <button type="button" class="btn btn-accent" data-brewer="start">صب</button>
+            <button type="button" class="btn" data-brewer="pause">إيقاف مؤقت</button>
+            <button type="button" class="btn" data-brewer="resume">استئناف</button>
+            <button type="button" class="btn btn-danger" data-brewer="stop">إيقاف</button>
+          </div>
+        </section>
+
+        <section class="mcard" id="mcScale">
+          <h2>الميزان والدريبر</h2>
+          <p class="muted small">الوزن يظهر مباشرة فوق. حرّك الدريبر خطوة خطوة أو هزّه عشان يستوي البن.</p>
+          <div class="mc-acts">
+            <button type="button" class="btn" data-dripper="vibrate">اهتزاز</button>
+            <button type="button" class="btn" data-dripper="right">خطوة يمين</button>
+            <button type="button" class="btn" data-dripper="left">خطوة يسار</button>
+            <button type="button" class="btn btn-danger" data-dripper="stop">إيقاف الحركة</button>
+          </div>
+        </section>
+      </div>
+
+      <section class="mcard mc-log">
+        <h2>سجل الجهاز</h2>
+        <ol id="machineLog" class="mlog"><li class="muted">ما فيه أحداث بعد.</li></ol>
+      </section>
+    </section>
+
+    <!-- ============ LIBRARY (roasters' recipes) ============ -->
+    <section id="panel-library" class="panel" style="display:none">
+      <div class="panel-head">
+        <div>
+          <h1>مكتبة المحامص</h1>
+          <p class="muted"><span id="libCount">0</span> وصفة من محامص سعودية لجهاز XBloom. شغّلها مباشرة أو احفظها في حسابك.</p>
+        </div>
+        <button class="btn btn-ghost-soft" data-goto="community" type="button">وصفات المجتمع</button>
+      </div>
+      <div class="lib-filters">
+        <input id="libSearch" type="search" placeholder="ابحث: محصول، مزرعة، محمصة" autocomplete="off" />
+        <div class="lib-row">
+          <div class="opt-seg" data-lib="serve">
+            <button type="button" class="opt-btn active" data-v="all">الكل</button>
+            <button type="button" class="opt-btn" data-v="hot">حار</button>
+            <button type="button" class="opt-btn" data-v="iced">بارد</button>
+          </div>
+          <select id="libRoaster" aria-label="المحمصة"><option value="">كل المحامص</option></select>
+          <label class="check"><input type="checkbox" id="libApproved" /> المعتمدة من المحمصة</label>
+        </div>
+      </div>
+      <div id="libList" class="rows lib-list"></div>
+      <button id="libMore" class="btn btn-ghost-soft btn-block hidden" type="button">عرض المزيد</button>
+    </section>
+
     <!-- ============ HOME (mobile landing) ============ -->
     <section id="panel-home" class="panel active">
       <div class="home">
@@ -670,6 +815,27 @@
 
         <button id="homeLoginBtn" class="login-line" type="button">سجّل دخول حساب XBloom عشان تنحفظ وصفاتك في التطبيق</button>
 
+        <section class="home-machine">
+          <div class="sec-hdr">
+            <h2>الجهاز</h2>
+            <button class="link-btn" data-goto="machine" type="button">تحكم كامل</button>
+          </div>
+          <div class="tiles">
+            <button class="tile" data-goto="machine" data-focus="mcGrinder" type="button">
+              <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M10 5h12l-2 7h-8z"/><rect x="9" y="12" width="14" height="9" rx="2"/><path d="M13 21v6h6v-6"/><circle cx="16" cy="16.5" r="2"/></svg>
+              <b>الطاحونة</b>
+            </button>
+            <button class="tile" data-goto="machine" data-focus="mcBrewer" type="button">
+              <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8h16v4H8z"/><path d="M16 12v5"/><path d="M13 20c0 2 1.5 3 3 3s3-1 3-3-3-4-3-4-3 2-3 4z"/></svg>
+              <b>الصب</b>
+            </button>
+            <button class="tile" data-goto="machine" data-focus="mcScale" type="button">
+              <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="6" y="20" width="20" height="6" rx="2"/><path d="M11 20v-4h10v4"/><path d="M16 9v3"/><path d="M13 12h6"/></svg>
+              <b>الميزان</b>
+            </button>
+          </div>
+        </section>
+
         <section class="home-recipes">
           <div class="sec-hdr">
             <h2>وصفاتي</h2>
@@ -699,13 +865,13 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 6h14M5 12h14M5 18h9"/></svg>
       <span>وصفاتي</span>
     </button>
-    <button class="mnav-btn" data-goto="manual" type="button">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 7h9M18 7h1M5 17h3M12 17h7"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
-      <span>يدوي</span>
+    <button class="mnav-btn" data-goto="library" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M5 4h4v16H5zM10 4h4v16h-4z"/><path d="M15.5 5l3.6-1 2.4 15.4-3.6 1z"/></svg>
+      <span>المكتبة</span>
     </button>
-    <button class="mnav-btn" data-goto="community" type="button">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 7.5a2.5 2.5 0 1 1 0 5M17.5 15.5A4.5 4.5 0 0 1 20.5 19"/></svg>
-      <span>المجتمع</span>
+    <button class="mnav-btn" data-goto="machine" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="13" y="3" width="7" height="17" rx="2"/><path d="M4 5h9v4H4z"/><path d="M6 9h5l-1 4H7z"/><path d="M3 21h18"/></svg>
+      <span>الجهاز</span>
     </button>
   </nav>
 
@@ -758,6 +924,38 @@
   </div>
 </div>
 
+<div id="brewLive" class="live hidden" role="dialog" aria-modal="true" aria-labelledby="liveName">
+  <header class="live-hdr">
+    <button id="liveHide" class="avatar-btn" type="button" aria-label="إخفاء">✕</button>
+    <b id="liveName">التحضير</b>
+    <span class="ble-state on" id="liveConn">متصل</span>
+  </header>
+  <div class="live-display">
+    <div class="live-clock num" id="liveClock">0:00</div>
+    <div class="live-phase" id="livePhase">جاري الاتصال…</div>
+  </div>
+  <div class="live-main">
+    <div class="live-pct"><b class="num" id="livePct">0</b><span>%</span></div>
+    <div class="live-stats">
+      <div><span>الماء</span><b class="num" id="liveWater">0</b><small>من <span id="liveTarget">0</span> ml</small></div>
+      <div><span>التدفق</span><b class="num" id="liveFlow">—</b><small>ml/s</small></div>
+      <div><span>الحرارة</span><b class="num" id="liveTemp">—</b><small>°C</small></div>
+    </div>
+  </div>
+  <figure class="live-chart">
+    <figcaption><b>سجل التحضير</b><span class="lg lg-water">الماء</span><span class="lg lg-coffee">القهوة</span></figcaption>
+    <div class="chart-wrap">
+      <svg id="liveChart" role="img" aria-label="وزن الماء والقهوة مع الوقت"></svg>
+      <div id="liveTip" class="chart-tip hidden"></div>
+    </div>
+  </figure>
+  <ol id="liveSteps" class="live-steps"></ol>
+  <div class="live-acts">
+    <button id="liveStop" class="btn btn-danger" type="button">إيقاف التحضير</button>
+    <button id="liveDone" class="btn btn-accent hidden" type="button">تم</button>
+  </div>
+</div>
+
 <div id="brewModal" class="modal hidden">
   <div class="modal-box brew-modal-box">
     <div class="brew-modal-head">
@@ -802,9 +1000,10 @@
   </div>
 </div>
 
-<script src="recipe-engine.js?v=19"></script>
-<script src="xbloom-web.js?v=19"></script>
-<script src="xbloom-ble.js?v=19"></script>
-<script src="app.js?v=19"></script>
+<script src="recipe-engine.js?v=20"></script>
+<script src="xbloom-web.js?v=20"></script>
+<script src="xbloom-ble.js?v=20"></script>
+<script src="app.js?v=20"></script>
+<script src="studio.js?v=20"></script>
 </body>
 </html>

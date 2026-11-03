@@ -162,7 +162,7 @@
       theName: spec.name,
       dose: isTea ? clamp(spec.dose_g, 1, 10, 5) : clamp(spec.dose_g, 1, 31, 15),
       grandWater: clamp(spec.ratio, 1, isTea ? 99 : 40, 15),
-      grinderSize: isTea ? 50 : clamp(spec.grind_size, 40, 120, 70),
+      grinderSize: isTea ? 50 : clamp(spec.grind_size, 1, 120, 55),
       rpm: isTea ? 60 : clamp(spec.grind_rpm, 60, 120, 80),
       cupType: isTea ? 4 : 2,
       adaptedModel: 1,

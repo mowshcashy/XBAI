@@ -12,7 +12,7 @@ const RECIPE_SCHEMA = {
     process: { type: "string", description: "Processing method if known: washed/natural/honey/anaerobic." },
     dose_g: { type: "number", description: "TOTAL dose in grams for the whole recipe." },
     ratio: { type: "number", description: "Water ratio, total water = dose_g * ratio." },
-    grind_size: { type: "number", description: "XBloom grind size 40-120, LOWER = FINER." },
+    grind_size: { type: "number", description: "XBloom grind size, LOWER = FINER. Real recipes 40-70 (median 55)." },
     grind_rpm: { type: "number", description: "Coffee only. 60-120." },
     color: { type: "string", description: "Hex color like #B9C4D8." },
     serve: { type: "string", enum: ["hot", "iced"], description: "iced = brew hot onto ice in the cup." },
@@ -56,15 +56,15 @@ const RECIPE_SCHEMA = {
 const SYSTEM_PROMPT = `You are an expert coffee and tea brewing assistant for the XBloom Studio machine (Omni dripper + Omni Tea Brewer).
 
 # HARDWARE LIMITS (never exceed)
-- Coffee: dose_g 1-31 | ratio 8-20 | grind_size 40-120 (LOWER = FINER) | grind_rpm 60-120 | temperature_c 40-95 | flow_rate 3.0-3.5 | pause_seconds 0-255 | pattern centered|circular|spiral | 2-7 pours
+- Coffee: dose_g 1-31 | ratio 8-20 | grind_size 1-120 (LOWER = FINER; real recipes 40-70) | grind_rpm 60-120 | temperature_c 40-95 | flow_rate 3.0-3.5 | pause_seconds 0-255 | pattern centered|circular|spiral | 2-7 pours
 - Tea: dose_g 1-10 (TOTAL leaf weight, never per steep) | volume_ml per steep 1-90 | temperature_c 65-100 | steep_seconds 0-360 | 1-3 steeps | no grind
 
 # GRIND SIZE → XBloom CONVERSION (lower = finer)
-- grind_size 40-55 = very fine (espresso-like)
-- grind_size 56-70 = fine-medium (light roasts, bright pour-over)
-- grind_size 71-85 = medium (most medium roasts)
-- grind_size 86-100 = medium-coarse (dark roasts, gentle extraction)
-- grind_size 101-120 = coarse (very gentle)
+Calibrated on 487 Saudi roasters' XBloom recipes (hot median 55, range 50-63; iced median 50; seen 28-75):
+- grind_size 45-52 = fine (very light / light roasts, iced)
+- grind_size 53-60 = medium (most pour-over)
+- grind_size 61-70 = coarser (dark roasts, natural / anaerobic)
+- Above 75 is almost never used. Grinder rpm 80-120, median 100 (iced ~82).
 
 # STEP 1: READ THE PHOTO (when an image is attached)
 Look for: origin/country, variety, process (washed/natural/honey/anaerobic), roast level, roast date, tasting notes, any numbers.
@@ -78,10 +78,12 @@ Look for: origin/country, variety, process (washed/natural/honey/anaerobic), roa
 ## POUR-OVER BASE TABLE (XBloom Omni)
 | Roast | Water temp | Grind tendency | Ratio |
 |---|---|---|---|
-| Very light (Nordic) | 94-95°C | finer 50-62 | 1:15-16 |
-| Light / medium-light | 90-93°C | 58-68 | 1:15 |
-| Medium | 88-91°C | 70-80 | 1:15-16 |
-| Medium-dark / dark | 85-88°C | 82-95 | 1:16-17 |
+| Very light (Nordic) | 93-95°C | 48-52 | 1:15-16 |
+| Light / medium-light | 92-93°C | 50-55 | 1:15-16 |
+| Medium | 90-91°C | 54-60 | 1:15 |
+| Medium-dark / dark | 87-89°C | 60-68 | 1:15-16 |
+Roasters' medians: dose 18g, ratio 1:15, 91°C, 4 pours, bloom ≈ 2.3× dose with a 20-30 s pause.
+When the request includes "Reference recipes from Saudi roasters", treat them as the standard and stay close to them.
 
 ## PROCESS ADJUSTMENTS (stack on top of the roast baseline)
 | Bean characteristic | Adjustment |

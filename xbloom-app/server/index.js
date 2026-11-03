@@ -183,7 +183,7 @@ function normalizeRecipe(r) {
     }
     return {
       kind, name, dose_g: dose, ratio,
-      grind_size: Math.round(clamp(r.grind_size, 40, 120, 70)),
+      grind_size: Math.round(clamp(r.grind_size, 1, 120, 55)),
       grind_rpm: Math.round(clamp(r.grind_rpm, 60, 120, 80)),
       color, pours, notes,
       serve: iced ? "iced" : "hot",

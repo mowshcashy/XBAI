@@ -167,6 +167,7 @@ function showPanel(name) {
   if (name === "recipes") loadRecipes();
   if (name === "community") loadCommunity();
   if (name === "home") populateHomeGrid();
+  if (name === "library") window.renderLibrary?.();
 }
 document.querySelectorAll(".mod-card").forEach((t) =>
   t.addEventListener("click", () => showPanel(t.dataset.goto))
@@ -660,7 +661,7 @@ function setAiOpt(opt, value) {
   aiOpts[opt] = opt === "cups" ? Number(value) : value;
   $$(`[data-opt="${opt}"] .opt-btn`).forEach((b) => b.classList.toggle("active", b.dataset.v === String(value)));
 }
-$$(".opt-btn").forEach((b) => b.addEventListener("click", () => setAiOpt(b.closest("[data-opt]").dataset.opt, b.dataset.v)));
+$$("[data-opt] .opt-btn").forEach((b) => b.addEventListener("click", () => setAiOpt(b.closest("[data-opt]").dataset.opt, b.dataset.v)));
 
 // Typing "باردة" / "قوية" / "كوبين" flips the matching buttons so they never disagree with the text.
 $("#aiDescInput").addEventListener("input", () => {
@@ -729,13 +730,13 @@ $("#aiBrewBtn").addEventListener("click", async () => {
   let recipe = null, source = "engine";
   if (aiReady()) {
     try {
-      const request = `${text || (image ? "صمم لي وصفة من صورة الكيس" : "قهوة")}\n\n${XBRecipe.hint(intent)}`;
+      const request = [text || (image ? "صمم لي وصفة من صورة الكيس" : "قهوة"), XBRecipe.hint(intent), XBRecipe.referenceHint(intent, text)].filter(Boolean).join("\n\n");
       const { gotRecipe } = await askAi(request, image);
       if (gotRecipe) { recipe = XBRecipe.finalize(gotRecipe, intent); source = "ai"; }
     } catch { /* fall back to the built-in engine */ }
   }
   if (!recipe) {
-    recipe = XBRecipe.build(intent);
+    recipe = XBRecipe.compose(intent, text);
     if (image) recipe.notes += " (قراءة صورة الكيس تحتاج تفعيل الذكاء الاصطناعي المتقدم — صممتها من طلبك.)";
   }
   await minDelay;
@@ -747,7 +748,9 @@ $("#aiBrewBtn").addEventListener("click", async () => {
   $("#resultErrBox")?.classList.add("hidden");
   $("#resultName").textContent = recipe.name || "وصفة جديدة";
   $("#resultNotes").textContent = recipe.notes || "";
-  $("#resultSource").textContent = source === "ai" ? "صممها الذكاء الاصطناعي" : "صممها محرك XBloom Studio";
+  $("#resultSource").textContent = source === "ai"
+    ? "صممها الذكاء الاصطناعي بالاستناد لوصفات المحامص"
+    : recipe.basedOn ? `من مكتبة المحامص: ${recipe.basedOn.roaster}` : "صممها محرك XBloom Studio";
   renderPreview(recipe);
   $("#previewBadge").classList.remove("hidden");
   $("#previewActions").classList.add("hidden");
@@ -967,32 +970,9 @@ function brewOnMachine(spec) {
 $("#brewModalGo").addEventListener("click", () => {
   const spec = _pendingBrew;
   if (!spec) return;
-  const u = brewUi();
-  u.check.classList.add("hidden");
-  u.go.disabled = true;
-  u.go.classList.add("hidden");
-  u.title.textContent = "جاري التحضير…";
-  u.subtitle.textContent = "اختر جهاز XBLOOM من القائمة";
-  u.icon.style.animation = "brew-pulse 1.4s ease-in-out infinite";
-
-  let job;
-  try {
-    job = window.XBBle.brew(spec, {
-      onStatus: (text) => { u.subtitle.textContent = text; brewLog(`• ${text}`); },
-    });
-  } catch (err) {
-    brewFinished("تعذّر الاتصال", err.message);
-    return;
-  }
-  _brewAbort = job;
-  job.done.then(() => {
-    if (_brewAbort === job) brewFinished("القهوة جاهزة ☕", "بالعافية!");
-  }).catch((err) => {
-    if (_brewAbort !== job) return;
-    const msg = err?.name === "NotFoundError" ? "ما تم اختيار جهاز" : (err?.message || String(err));
-    brewLog(`✗ ${msg}`);
-    brewFinished("ما اكتمل التحضير", msg);
-  });
+  _pendingBrew = null;
+  $("#brewModal").classList.add("hidden");
+  startLiveBrew(spec);
 });
 
 async function brewViaServer(spec) {
@@ -1131,7 +1111,7 @@ const manual = {
 };
 
 const LIMITS = {
-  coffee: { dose: [1, 31], ratio: [8, 20], grind: [40, 120], rpm: [60, 120], vol: [1, 400], temp: [40, 95], pause: [0, 255] },
+  coffee: { dose: [1, 31], ratio: [8, 20], grind: [1, 120], rpm: [60, 120], vol: [1, 400], temp: [40, 95], pause: [0, 255] },
   tea:    { dose: [1, 10], ratio: [1, 99], vol: [1, 90], temp: [65, 100], pause: [0, 360] },
 };
 
@@ -1527,6 +1507,7 @@ function recipeCard(r) {
       <div class="meta">${isTea ? "شاي" : "قهوة"} · ${r.dose_g}g · ${Math.round(total)}ml${isTea ? "" : ` · طحن ${r.grind_size}`}</div>
       <div class="meta">${(r.pours?.length || 0)} خطوة${r.share_link ? ` · <a href="${escapeHtml(r.share_link)}" target="_blank">مشاركة</a>` : ""}</div>
       <div class="acts">
+        ${isTea ? "" : `<button class="btn btn-accent" data-act="brew" type="button">▶ شغّل</button>`}
         <button class="btn" data-act="edit" type="button">${ICON_EDIT} تعديل</button>
         <button class="btn" data-act="dup" type="button">${ICON_COPY} نسخ</button>
         <button class="btn" data-act="pub" type="button">${ICON_SHARE} نشر</button>
@@ -1562,6 +1543,11 @@ $("#recipeList").addEventListener("click", async (e) => {
       : (await api("/api/recipes")).recipes;
     const r = recipes.find((x) => String(x.id) === String(id));
     if (!r) return;
+    if (btn.dataset.act === "brew") {
+      state.preview = asSpec(r);
+      brewOnMachine(state.preview);
+      return;
+    }
     if (btn.dataset.act === "dup") {
       const copy = { kind: r.cup_type === "tea" ? "tea" : "coffee", name: `${r.name} (نسخة)`, dose_g: r.dose_g, ratio: r.ratio, color: r.color, pours: r.pours };
       const ok = await saveRecipe(copy);
@@ -1809,9 +1795,9 @@ function publishCommunityStatic(spec) {
 
 // System prompt for static AI calls (same as server/prompt.js)
 const STATIC_SYSTEM_PROMPT = `You are an expert coffee and tea brewing assistant for the XBloom Studio machine (Omni dripper + Omni Tea Brewer).
-HARDWARE LIMITS: Coffee: dose_g 1-31 | ratio 8-20 | grind_size 40-120 (LOWER=FINER) | grind_rpm 60-120 | temp 40-95 | pause 0-255 | pattern centered|circular|spiral | 2-7 pours. Tea: dose_g 1-10 | vol 1-90 per steep | temp 65-100 | steep_seconds 0-360 | 1-3 steeps.
-GRIND: 40-55 very fine | 56-70 fine-medium | 71-85 medium | 86-100 medium-coarse | 101-120 coarse.
-ROAST TABLE: Very light 94-95°C grind 50-62 ratio 1:15-16 | Light 90-93°C grind 58-68 ratio 1:15 | Medium 88-91°C grind 70-80 ratio 1:15-16 | Dark 85-88°C grind 82-95 ratio 1:16-17.
+HARDWARE LIMITS: Coffee: dose_g 1-31 | ratio 8-20 | grind_size 1-120 (LOWER=FINER; real recipes 40-70) | grind_rpm 60-120 | temp 40-95 | pause 0-255 | pattern centered|circular|spiral | 2-7 pours. Tea: dose_g 1-10 | vol 1-90 per steep | temp 65-100 | steep_seconds 0-360 | 1-3 steeps.
+GRIND (from 487 Saudi roasters' XBloom recipes): hot median 55 (50-63), iced median 50, seen 28-75. 45-52 = fine (light roasts, iced) | 53-60 = medium (most pour-over) | 61-70 = coarser (dark / natural). Above 75 is almost never used.
+ROAST TABLE: Very light 93-95°C grind 48-52 ratio 1:15-16 | Light 92-93°C grind 50-55 ratio 1:15-16 | Medium 90-91°C grind 54-60 ratio 1:15 | Dark 87-89°C grind 60-68 ratio 1:15-16. Grinder rpm usually 80-120 (median 100). Bloom ≈ 2.3× dose, 20-30 s.
 PROCESS ADJUSTMENTS: Washed/dense: grind 3-5 finer | Natural/honey/anaerobic: grind 3-5 coarser | Fresh<7days: bloom x2.5 dose 35-45s.
 COFFEE STEPS: dose_g TOTAL at top level. Sum of pour volumes = dose_g*ratio ±5%. Bloom = first pour 2-2.5x dose, long pause. 2-7 pours total.
 ICED (iced/cold/flash/مثلجة/باردة/ثلج): XBloom HEATS water, it cannot brew cold. Iced = hot flash brew onto ice in the server. temp 92-95°C on EVERY pour, NEVER low/cold temps. ratio = HOT-water ratio 9-10 (~60% hot water, ~40% ice). Grind 5-8 finer. 3-4 pours, bloom 2x dose 30-40s, later pauses 0-15s, total under ~2:30. Name starts with "Iced"; notes say grams of ice.
