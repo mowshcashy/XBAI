@@ -6,9 +6,9 @@
 <title>XBloom Studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Overpass:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=17" />
-<meta name="theme-color" content="#0b0d12" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&family=Inter+Tight:wght@400;500;600&family=Instrument+Serif&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=19" />
+<meta name="theme-color" content="#ffffff" />
 <link rel="manifest" href="manifest.webmanifest" />
 </head>
 <body>
@@ -22,19 +22,22 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M17 8h1a3 3 0 1 1 0 6h-1M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1.5" x2="6" y2="4"/><line x1="10" y1="1.5" x2="10" y2="4"/><line x1="14" y1="1.5" x2="14" y2="4"/></svg>
       </div>
       <div class="logo-text">
-        <b>xbloom</b>
-        <div class="conn"><i class="dot"></i> متصل محلياً</div>
+        <b class="wordmark">XBloom <em>Studio</em></b>
       </div>
     </div>
 
     <div class="mod-grid">
-      <button class="mod-card active" data-goto="manual" type="button">
+      <button class="mod-card active" data-goto="home" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4 10.5L12 4l8 6.5V20h-5v-6H9v6H4z"/></svg>
+        <span>الرئيسية</span>
+      </button>
+      <button class="mod-card" data-goto="manual" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>
         <span>يدوي</span>
       </button>
       <button class="mod-card" data-goto="assistant" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4"/><circle cx="9" cy="13" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.1" fill="currentColor" stroke="none"/><path d="M9 17h6"/></svg>
-        <span>AI</span>
+        <span>حضّر</span>
       </button>
       <button class="mod-card" data-goto="recipes" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/></svg>
@@ -73,7 +76,7 @@
   <div class="main">
 
     <!-- ============ MANUAL (touch-first) ============ -->
-    <section id="panel-manual" class="panel active">
+    <section id="panel-manual" class="panel">
       <div class="panel-head">
         <div>
           <h1>بناء وصفة يدوياً</h1>
@@ -255,8 +258,12 @@
       <div class="panel-head">
         <div>
           <h1>مساعد التحضير</h1>
-          <p class="muted" id="assistHint">اختر المزوّد، صف قهوتك أو شايك</p>
+          <p class="muted">يصمم لك وصفة مضبوطة لجهاز XBloom — حارة أو باردة</p>
         </div>
+      </div>
+      <details class="ai-advanced">
+        <summary>ذكاء اصطناعي متقدم <span class="muted small">(اختياري — لقراءة صور الأكياس)</span></summary>
+        <p class="muted small" id="assistHint" style="margin:.4rem 0 .6rem">بدون إعداد، المحرك المدمج يصمم الوصفة فوراً. فعّل AI لو تبي يقرأ صورة الكيس.</p>
         <div class="provider-bar">
           <div class="seg" role="tablist">
             <button type="button" class="seg-btn active" data-provider="ollama">
@@ -281,7 +288,7 @@
           <button type="button" class="btn" id="orKeyGoSettings" style="padding:.3rem .65rem;font-size:.75rem">⚙ الإعدادات</button>
           <a href="https://openrouter.ai/keys" target="_blank" class="btn" style="padding:.3rem .65rem;font-size:.75rem">مفتاح مجاني</a>
         </div>
-      </div>
+      </details>
 
       <!-- ═══ AI FLOW (3 states) ═══ -->
       <div class="ai-flow">
@@ -297,15 +304,39 @@
                   <line x1="16" y1="9" x2="16" y2="15"/><line x1="24" y1="7" x2="24" y2="15"/><line x1="32" y1="9" x2="32" y2="15"/>
                 </svg>
               </div>
-              <h2 class="ai-hero-title">صف محصولك</h2>
-              <p class="ai-hero-sub">اكتب نوع القهوة أو الشاي، المنشأ، التحميص، المعالجة…<br>أو ارفع صورة الكيس مباشرةً وسأقرأها</p>
+              <h2 class="ai-hero-title">وش تبي تشرب؟</h2>
+              <p class="ai-hero-sub">اكتب طلبك بكلامك — مثل «قهوة إثيوبية باردة» أو «كولومبي حار لكوبين» أو «شاي أخضر»</p>
             </div>
             <div id="aiImgPreview" class="ai-img-preview hidden">
               <img id="aiImgThumb" alt="صورة المحصول" />
               <button id="aiImgRemove" class="attach-remove" type="button">✕</button>
             </div>
-            <textarea id="aiDescInput" class="ai-desc-input" rows="4"
-              placeholder="مثال: قهوة إثيوبية يرغاشيفي، تحميص فاتح، معالجة طبيعية، أريد أبرز النكهات الفاكهية…"></textarea>
+            <textarea id="aiDescInput" class="ai-desc-input" rows="3"
+              placeholder="مثال: قهوة إثيوبية باردة، تحميص فاتح، أبيها قوية…"></textarea>
+            <div class="ai-opts">
+              <div class="opt-row">
+                <span class="opt-label">الطريقة</span>
+                <div class="opt-seg" data-opt="serve">
+                  <button type="button" class="opt-btn active" data-v="hot">☕ حار</button>
+                  <button type="button" class="opt-btn" data-v="iced">🧊 بارد</button>
+                </div>
+              </div>
+              <div class="opt-row">
+                <span class="opt-label">القوة</span>
+                <div class="opt-seg" data-opt="strength">
+                  <button type="button" class="opt-btn" data-v="weak">خفيف</button>
+                  <button type="button" class="opt-btn active" data-v="balanced">متوازن</button>
+                  <button type="button" class="opt-btn" data-v="strong">قوي</button>
+                </div>
+              </div>
+              <div class="opt-row">
+                <span class="opt-label">الكمية</span>
+                <div class="opt-seg" data-opt="cups">
+                  <button type="button" class="opt-btn active" data-v="1">كوب</button>
+                  <button type="button" class="opt-btn" data-v="2">كوبين</button>
+                </div>
+              </div>
+            </div>
             <div class="ai-hero-btns">
               <label class="btn btn-ghost-soft ai-upload-lbl" for="aiImgFile">
                 <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -313,7 +344,7 @@
               </label>
               <input type="file" id="aiImgFile" accept="image/*" class="hidden" />
               <button type="button" id="aiBrewBtn" class="btn btn-accent ai-brew-btn">
-                احضر لي وصفة
+                صمّم الوصفة
                 <svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               </button>
             </div>
@@ -355,6 +386,7 @@
           <div class="split">
             <div class="card result-left">
               <div class="result-top">
+                <span id="resultSource" class="result-source"></span>
                 <h3 id="resultName" class="result-name">الوصفة</h3>
                 <p id="resultNotes" class="result-notes muted small"></p>
               </div>
@@ -539,14 +571,14 @@
           <div class="settings-field">
             <label>اللون الرئيسي</label>
             <div class="color-row">
-              <input id="settingAccent" type="color" value="#f26b1d" title="لون مخصص" />
+              <input id="settingAccent" type="color" value="#000000" title="لون مخصص" />
               <div class="color-swatches">
-                <button class="color-swatch" data-accent="#f26b1d" style="background:#f26b1d" title="برتقالي (افتراضي)" type="button"></button>
-                <button class="color-swatch" data-accent="#e0a03a" style="background:#e0a03a" title="كراميل" type="button"></button>
-                <button class="color-swatch" data-accent="#d2543f" style="background:#d2543f" title="نحاسي" type="button"></button>
-                <button class="color-swatch" data-accent="#4fae73" style="background:#4fae73" title="أخضر شاي" type="button"></button>
-                <button class="color-swatch" data-accent="#8b6cf0" style="background:#8b6cf0" title="بنفسجي" type="button"></button>
-                <button class="color-swatch" data-accent="#3f8fe0" style="background:#3f8fe0" title="أزرق" type="button"></button>
+                <button class="color-swatch" data-accent="#000000" style="background:#000000" title="أسود (افتراضي)" type="button"></button>
+                <button class="color-swatch" data-accent="#0b45c5" style="background:#0b45c5" title="أزرق XBloom" type="button"></button>
+                <button class="color-swatch" data-accent="#6f4e37" style="background:#6f4e37" title="بني قهوة" type="button"></button>
+                <button class="color-swatch" data-accent="#2e7d4f" style="background:#2e7d4f" title="أخضر شاي" type="button"></button>
+                <button class="color-swatch" data-accent="#555555" style="background:#555555" title="رمادي" type="button"></button>
+                <button class="color-swatch" data-accent="#b3261e" style="background:#b3261e" title="أحمر" type="button"></button>
               </div>
             </div>
           </div>
@@ -566,127 +598,98 @@
     </section>
 
     <!-- ============ HOME (mobile landing) ============ -->
-    <section id="panel-home" class="panel">
-      <div class="home-wrap">
+    <section id="panel-home" class="panel active">
+      <div class="home">
 
-        <!-- Profile header -->
-        <div class="home-hdr">
-          <button class="home-profile" id="homeAvatarBtn" data-goto="settings" type="button">
-            <span class="home-avatar"><span id="homeAvatarLetter">؟</span></span>
-            <span class="home-who">
-              <b id="homeName">ضيف</b>
-              <span id="homeEmail">غير مسجّل</span>
-            </span>
-          </button>
-          <div class="home-hdr-acts">
-            <button class="round-btn" data-goto="recipes" type="button" aria-label="وصفاتي">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-            </button>
-            <button class="round-btn" data-goto="settings" type="button" aria-label="الإعدادات">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <header class="home-bar">
+          <span class="wordmark">XBloom <em>Studio</em></span>
+          <div class="home-bar-acts">
+            <span class="ble-state" id="homeLinkState">Bluetooth</span>
+            <button class="avatar-btn" id="homeAvatarBtn" data-goto="settings" type="button" aria-label="حسابي">
+              <span id="homeAvatarLetter">؟</span>
             </button>
           </div>
-        </div>
+        </header>
 
-        <!-- Title + CTA -->
-        <div class="home-title-row">
-          <h1 class="home-title">استوديو<br>القهوة</h1>
-          <button class="pill-cta" data-goto="manual" type="button">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
-            وصفة جديدة
+        <section class="home-hero">
+          <svg class="machine" viewBox="0 0 160 200" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+            <rect x="92" y="18" width="44" height="160" rx="11"/>
+            <rect x="34" y="26" width="66" height="24" rx="9"/>
+            <path d="M48 50h34l-9 26H57z"/>
+            <circle class="machine-led" cx="114" cy="40" r="3" stroke="none"/>
+            <path d="M104 150h20" opacity=".45"/>
+            <rect x="18" y="178" width="124" height="7" rx="3.5"/>
+            <path d="M50 132h32v34a8 8 0 0 1-8 8H58a8 8 0 0 1-8-8z"/>
+            <path d="M82 140h4a6 6 0 0 1 0 12h-4"/>
+            <path class="drip" d="M65 82v40" stroke-dasharray="3 9" stroke-linecap="round"/>
+          </svg>
+          <h1 class="home-q">وش تبي تشرب اليوم؟</h1>
+          <p class="home-sub" id="homeGreeting">اختر، أو اكتب طلبك بكلامك.</p>
+        </section>
+
+        <div class="picks">
+          <button class="pick" data-quick="قهوة حارة" type="button">
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 13h16v8a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6z"/><path d="M23 15h1.5a3 3 0 0 1 0 6H23"/><path d="M12 9c0-1.5 1.5-1.5 1.5-3M17 9c0-1.5 1.5-1.5 1.5-3"/></svg>
+            <b>قهوة حارة</b>
+            <small>تقطير كلاسيكي</small>
+          </button>
+          <button class="pick pick-iced" data-quick="قهوة باردة" type="button">
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8h16l-2 18a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2z"/><rect x="11.5" y="13" width="4.5" height="4.5" rx="1"/><rect x="16.5" y="17.5" width="4.5" height="4.5" rx="1"/><path d="M8 11h16"/></svg>
+            <b>قهوة باردة</b>
+            <small>مباشرة على الثلج</small>
+          </button>
+          <button class="pick" data-quick="شاي" type="button">
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14h18v5a8 8 0 0 1-8 8h-2a8 8 0 0 1-8-8z"/><path d="M24 16h1a3 3 0 0 1 0 6h-1"/><path d="M15 14c-3-2-3-6 1-8 1 3 3 5 1 8"/></svg>
+            <b>شاي</b>
+            <small>نقع على دفعات</small>
           </button>
         </div>
-        <button id="homeLoginBtn" class="home-login-pill" type="button">دخول حساب XBloom</button>
 
-        <!-- AI assistant card -->
-        <div class="glass home-ai">
-          <p class="home-ai-hi">أهلاً <span id="homeAiName">بك</span> <span class="spark">✦</span></p>
-          <h2 class="home-ai-q">وش نحضّر اليوم؟</h2>
-          <div class="home-ai-chips">
-            <button class="ai-chip active" data-prompt="بن إثيوبي فاتح التحميص مغسول بنكهات زهرية وحمضيات" type="button">☕ إثيوبي فاتح</button>
-            <button class="ai-chip" data-prompt="بن كولومبي متوسط التحميص بنكهة كراميل وشوكولاتة" type="button">🍫 كولومبي متوسط</button>
-            <button class="ai-chip" data-prompt="قهوة مقطّرة مثلجة منعشة على الثلج" type="button">🧊 قهوة مثلجة</button>
-            <button class="ai-chip" data-prompt="بن طبيعي المعالجة بنكهات فواكه استوائية" type="button">🍓 طبيعي فواكه</button>
+        <form class="ask" id="homeAiForm">
+          <input id="homeAiInput" type="text" autocomplete="off" placeholder="أو اكتب: إثيوبي فاتح بارد لكوبين" />
+          <button class="ask-go" type="submit" aria-label="صمّم الوصفة">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+          </button>
+        </form>
+
+        <button id="homeLoginBtn" class="login-line" type="button">سجّل دخول حساب XBloom عشان تنحفظ وصفاتك في التطبيق</button>
+
+        <section class="home-recipes">
+          <div class="sec-hdr">
+            <h2>وصفاتي</h2>
+            <button class="link-btn" data-goto="recipes" type="button">عرض الكل (<span id="statTotal">0</span>)</button>
           </div>
-          <form class="home-ai-ask" id="homeAiForm">
-            <input id="homeAiInput" type="text" autocomplete="off" placeholder="اسأل الـ AI عن محصولك…" />
-            <button class="ask-go" type="submit" aria-label="صمّم الوصفة">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M3 21l9-9M12.2 6.2L11 5"/></svg>
-            </button>
-          </form>
-        </div>
-
-        <!-- Stats -->
-        <div class="home-stats">
-          <button class="glass stat" data-goto="recipes" type="button">
-            <span class="stat-top"><span>كل الوصفات</span><i class="stat-arrow">↗</i></span>
-            <span class="stat-val"><span class="stat-ic">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M18 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM6 4h5v8l-2.5-1.5L6 12z"/></svg>
-            </span><b id="statTotal">0</b></span>
-            <span class="stat-badge" id="statTotalBadge">محلي</span>
-          </button>
-          <button class="glass stat" data-goto="recipes" type="button">
-            <span class="stat-top"><span>قهوة</span><i class="stat-arrow">↗</i></span>
-            <span class="stat-val"><span class="stat-ic">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M17 8h1a3 3 0 1 1 0 6h-1M3 8h14v6a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4z"/></svg>
-            </span><b id="statCoffee">0</b></span>
-            <span class="stat-badge up" id="statCoffeeBadge">0%</span>
-          </button>
-          <button class="glass stat" data-goto="recipes" type="button">
-            <span class="stat-top"><span>شاي</span><i class="stat-arrow">↗</i></span>
-            <span class="stat-val"><span class="stat-ic">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 8h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM16 9h1.5a2.5 2.5 0 0 1 0 5H16M8 2v3M12 2v3"/></svg>
-            </span><b id="statTea">0</b></span>
-            <span class="stat-badge tea" id="statTeaBadge">0%</span>
-          </button>
-          <button class="glass stat" data-goto="manual" type="button">
-            <span class="stat-top"><span>متوسط النسبة</span><i class="stat-arrow">↗</i></span>
-            <span class="stat-val"><span class="stat-ic">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 2.7C8 7.4 6 10.9 6 13.5a6 6 0 0 0 12 0c0-2.6-2-6.1-6-10.8z"/></svg>
-            </span><b id="statRatio">—</b></span>
-            <span class="stat-badge">ماء : بن</span>
-          </button>
-        </div>
-
-        <!-- Phone → machine link -->
-        <button class="glass home-link" id="homeLinkCard" type="button">
-          <span class="link-end"><b>جوالك</b><small id="homeLinkState">Bluetooth</small></span>
-          <span class="link-line"><span class="link-dot">☕</span></span>
-          <span class="link-end end"><b>XBloom</b><small>Studio</small></span>
-        </button>
-
-        <!-- Recent recipes -->
-        <div class="glass home-list">
-          <div class="home-list-hdr">
-            <div>
-              <span class="muted small">آخر الوصفات</span>
-              <h2>وصفاتي</h2>
-            </div>
-            <button class="round-btn" data-goto="recipes" type="button" aria-label="عرض الكل">↗</button>
+          <div id="homeRecipeGrid" class="rows">
+            <p class="muted small home-empty">ما فيه وصفات بعد. اختر من فوق وبيصمم لك وحدة.</p>
           </div>
-          <div id="homeRecipeGrid" class="home-rows">
-            <p class="muted small home-empty">لا توجد وصفات بعد — اسأل الـ AI فوق ☝️</p>
-          </div>
-        </div>
+        </section>
 
       </div>
     </section>
 
   </div>
 
-  <!-- Mobile bottom navigation (floating glass pill) -->
+  <!-- Mobile bottom navigation -->
   <nav class="mobile-nav" id="mobileNav">
-    <button class="mnav-btn" data-goto="home" type="button" aria-label="الرئيسية">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10l9-7 9 7v10a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z"/></svg>
+    <button class="mnav-btn" data-goto="home" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4 10.5L12 4l8 6.5V20h-5v-6H9v6H4z"/></svg>
+      <span>الرئيسية</span>
     </button>
-    <button class="mnav-btn" data-goto="assistant" type="button" aria-label="AI">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>
+    <button class="mnav-btn" data-goto="assistant" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9h12v5a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5z"/><path d="M18 10.5h1a2.5 2.5 0 0 1 0 5h-1"/><path d="M10 6c0-1 1-1 1-2M14 6c0-1 1-1 1-2"/></svg>
+      <span>حضّر</span>
     </button>
-    <button class="mnav-btn" data-goto="recipes" type="button" aria-label="وصفاتي">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
+    <button class="mnav-btn" data-goto="recipes" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 6h14M5 12h14M5 18h9"/></svg>
+      <span>وصفاتي</span>
     </button>
-    <button class="mnav-btn" data-goto="community" type="button" aria-label="المجتمع">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/></svg>
+    <button class="mnav-btn" data-goto="manual" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 7h9M18 7h1M5 17h3M12 17h7"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+      <span>يدوي</span>
+    </button>
+    <button class="mnav-btn" data-goto="community" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 7.5a2.5 2.5 0 1 1 0 5M17.5 15.5A4.5 4.5 0 0 1 20.5 19"/></svg>
+      <span>المجتمع</span>
     </button>
   </nav>
 
@@ -781,8 +784,9 @@
   </div>
 </div>
 
-<script src="xbloom-web.js?v=17"></script>
-<script src="xbloom-ble.js?v=17"></script>
-<script src="app.js?v=17"></script>
+<script src="recipe-engine.js?v=19"></script>
+<script src="xbloom-web.js?v=19"></script>
+<script src="xbloom-ble.js?v=19"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

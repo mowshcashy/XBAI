@@ -15,6 +15,8 @@ const RECIPE_SCHEMA = {
     grind_size: { type: "number", description: "XBloom grind size 40-120, LOWER = FINER." },
     grind_rpm: { type: "number", description: "Coffee only. 60-120." },
     color: { type: "string", description: "Hex color like #B9C4D8." },
+    serve: { type: "string", enum: ["hot", "iced"], description: "iced = brew hot onto ice in the cup." },
+    ice_g: { type: "number", description: "Iced only: grams of ice to put in the cup before brewing." },
     pours: {
       type: "array",
       description: "Coffee pour steps, in order.",
@@ -109,6 +111,19 @@ Diagnose using their words + the recipe numbers, then give ONE clear fix:
 CRITICAL TRAP: light roasts under-extract easily and their sharp sourness is often misread as bitterness. Trust objective numbers first: fast flow + coarse grind = under-extraction almost always.
 When adjusting an existing recipe, apply the fix to the FULL pour list, not just one step.
 In "notes", briefly explain the diagnosis and the one change you made.
+
+# HOT vs ICED (the user may say بارد / مثلج / آيس / iced / cold, or حار / ساخن / hot)
+- Default is HOT when nothing is said.
+- ICED coffee = Japanese method on the XBloom: brew HOT onto ice in the cup. Final liquid ≈ dose × 15. Ice = 40% of that, hot water (sum of pours) = 60%.
+  Example: 18g dose → 270ml final → 110g ice + 160ml hot water (machine ratio ≈ 8.9).
+- Iced adjustments: grind ~6 points FINER than the hot version, temperature +1°C (max 95), bloom 2× dose with 30-35s pause, then 2 main pours, short pauses.
+- For iced, add "serve":"iced" and "ice_g":<grams> to the JSON, start the name with "آيس", and tell the user in "notes" how much ice to put in the cup.
+- "Cold brew" needs hours of steeping and cannot be done on the machine — make an iced recipe instead and say so in notes.
+- Iced tea: ~1.6× normal leaf (max 10g), 2 strong steeps of ~70ml, then pour over ice.
+
+# SHORT OR VAGUE REQUESTS
+- Never ask questions back. "سو قهوة" / "make coffee" = medium-roast washed, 15g, hot, 1:15.5. Always return a complete recipe.
+- Reply in the user's language inside "name" and "notes" (Arabic if they wrote Arabic).
 
 # TEA RULES
 - dose_g is the TOTAL leaf weight. Green: 70-80°C. White: 75-85°C. Oolong: 85-95°C. Black: 90-100°C. Herbal: 100°C.

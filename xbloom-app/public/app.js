@@ -15,7 +15,7 @@ const IS_STATIC = !["localhost", "127.0.0.1", ""].includes(location.hostname) &&
 // ============================================================
 // SETTINGS — loaded from localStorage, applied on boot
 // ============================================================
-const DEFAULT_ACCENT = "#f26b1d";
+const DEFAULT_ACCENT = "#000000";
 const settings = {
   name: "",
   orKey: "",
@@ -28,7 +28,7 @@ function loadSettings() {
   settings.orKey = localStorage.getItem("xbloom.s.orKey") || "";
   settings.ollamaUrl = localStorage.getItem("xbloom.s.ollamaUrl") || "http://localhost:11434";
   const savedAccent = localStorage.getItem("xbloom.s.accent");
-  settings.accent = savedAccent && savedAccent !== "#9ab5d9" ? savedAccent : DEFAULT_ACCENT;
+  settings.accent = savedAccent && !["#9ab5d9", "#f26b1d"].includes(savedAccent) ? savedAccent : DEFAULT_ACCENT;
   applyAccent(settings.accent);
   updateSidebarProfile();
   if (IS_STATIC) $("#staticNote")?.classList.remove("hidden");
@@ -42,7 +42,7 @@ function applyAccent(hex) {
   const root = document.documentElement.style;
   root.setProperty("--accent", hex);
   root.setProperty("--accent-2", `rgb(${lift(r)},${lift(g)},${lift(b)})`);
-  root.setProperty("--accent-faint", `rgba(${r},${g},${b},0.18)`);
+  root.setProperty("--accent-faint", `rgba(${r},${g},${b},0.12)`);
 }
 
 function updateSidebarProfile() {
@@ -153,7 +153,7 @@ function clampN(v, lo, hi) {
 // --- panels ---
 
 function heroBackground(color) {
-  return `radial-gradient(120% 140% at 0% 0%, ${color}66, transparent 55%), radial-gradient(90% 120% at 100% 100%, rgba(242,107,29,.45), transparent 60%), linear-gradient(135deg, #3a2215, #1a110c)`;
+  return `linear-gradient(270deg, ${color} 0 6px, transparent 6px), linear-gradient(160deg, #1d1d1f, #2c2c2e)`;
 }
 
 function showPanel(name) {
@@ -190,30 +190,14 @@ async function fetchRecipesForHome() {
 const recipeKind = (r) => ((r.cup_type || r.kind) === "tea" ? "tea" : "coffee");
 const asSpec = (r) => normalizeRecipe({ ...r, kind: recipeKind(r), steeps: r.steeps || (recipeKind(r) === "tea" ? r.pours : undefined) });
 
-function renderHomeStats(recipes) {
-  const tea = recipes.filter((r) => recipeKind(r) === "tea").length;
-  const coffee = recipes.length - tea;
-  const pct = (n) => (recipes.length ? `${Math.round((n / recipes.length) * 100)}%` : "0%");
-  const ratios = recipes.map((r) => Number(r.ratio)).filter((n) => n > 0);
-  const avg = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : 0;
-  $("#statTotal").textContent = recipes.length;
-  $("#statCoffee").textContent = coffee;
-  $("#statTea").textContent = tea;
-  $("#statRatio").textContent = avg ? `1:${avg.toFixed(1).replace(/\.0$/, "")}` : "—";
-  $("#statCoffeeBadge").textContent = pct(coffee);
-  $("#statTeaBadge").textContent = pct(tea);
-  $("#statTotalBadge").textContent = useLocalStore() ? "محلي" : "☁ XBloom";
-}
-
 function homeRow(r) {
   const tea = recipeKind(r) === "tea";
   const ml = Math.round((Number(r.dose_g) || 0) * (Number(r.ratio) || 0));
-  const color = escapeHtml(r.color || (tea ? "#4fae73" : "#f26b1d"));
+  const color = escapeHtml(r.color || (tea ? "#A8C686" : "#B08968"));
   return `<div class="hrow" data-recipe-id="${escapeHtml(String(r.id))}" role="button" tabindex="0">
-    <span class="hrow-av" style="background:radial-gradient(circle at 35% 30%,${color},rgba(0,0,0,.35))">${tea ? "🍵" : "☕"}</span>
-    <span class="hrow-txt"><b>${escapeHtml(r.name || "وصفة")}</b><small>${r.dose_g}g · ${ml}ml${tea ? "" : ` · طحن ${r.grind_size ?? "—"}`}</small></span>
-    <span class="hrow-tag ${tea ? "tea" : "coffee"}">${tea ? "شاي" : "قهوة"}</span>
-    ${tea ? "" : `<button class="hrow-brew" data-act="brew" type="button" aria-label="شغّل الآن">
+    <span class="hrow-dot" style="background:${color}"></span>
+    <span class="hrow-txt"><b>${escapeHtml(r.name || "وصفة")}</b><small>${tea ? "شاي" : "قهوة"}، ${r.dose_g}g بن، ${ml}ml ماء</small></span>
+    ${tea ? "" : `<button class="hrow-brew" data-act="brew" type="button" aria-label="شغّل الآن على الجهاز">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l10-6.5z"/></svg></button>`}
   </div>`;
 }
@@ -222,18 +206,16 @@ async function populateHomeGrid() {
   const grid = $("#homeRecipeGrid");
   if (!grid) return;
   homeRecipes = await fetchRecipesForHome().catch(() => []);
-  renderHomeStats(homeRecipes);
+  $("#statTotal").textContent = homeRecipes.length;
   grid.innerHTML = homeRecipes.length
     ? homeRecipes.slice(0, 6).map(homeRow).join("")
-    : `<p class="muted small home-empty">لا توجد وصفات بعد — اسأل الـ AI فوق ☝️</p>`;
+    : `<p class="muted small home-empty">ما فيه وصفات بعد. اختر من فوق وبيصمم لك وحدة.</p>`;
 }
 
 function syncHomeProfile(email) {
-  const name = settings.name || (email ? email.split("@")[0] : "") || "ضيف";
-  $("#homeName").textContent = name;
-  $("#homeEmail").textContent = email || "غير مسجّل";
-  $("#homeAiName").textContent = settings.name || (email ? name : "بك");
-  $("#homeAvatarLetter").textContent = (name[0] || "؟").toUpperCase();
+  const name = settings.name || (email ? email.split("@")[0] : "");
+  $("#homeGreeting").textContent = name ? `أهلاً ${name}. اختر، أو اكتب طلبك بكلامك.` : "اختر، أو اكتب طلبك بكلامك.";
+  $("#homeAvatarLetter").textContent = ((name || "؟")[0] || "؟").toUpperCase();
 }
 
 $("#homeRecipeGrid").addEventListener("click", (e) => {
@@ -250,36 +232,35 @@ $("#homeRecipeGrid").addEventListener("click", (e) => {
   showPanel("manual");
 });
 
-$$(".ai-chip").forEach((chip) => chip.addEventListener("click", () => {
-  $$(".ai-chip").forEach((c) => c.classList.toggle("active", c === chip));
-  $("#homeAiInput").value = chip.dataset.prompt;
-  $("#homeAiInput").focus();
-}));
+// Design straight away from a typed request or a quick pick.
+function designFromHome(text) {
+  showPanel("assistant");
+  $("#aiDescInput").value = text;
+  $("#aiDescInput").dispatchEvent(new Event("input"));
+  $("#aiBrewBtn").click();
+}
+
+$$(".pick").forEach((p) => p.addEventListener("click", () => designFromHome(p.dataset.quick)));
 
 $("#homeAiForm").addEventListener("submit", (e) => {
   e.preventDefault();
-  const text = $("#homeAiInput").value.trim() || $(".ai-chip.active")?.dataset.prompt || "";
-  if (!text) return;
-  showPanel("assistant");
-  $("#aiDescInput").value = text;
-  $("#aiBrewBtn").click();
+  const text = $("#homeAiInput").value.trim();
+  if (!text) { $("#homeAiInput").focus(); return; }
+  designFromHome(text);
 });
 
 {
   const ready = !!window.XBBle?.supported();
   const st = $("#homeLinkState");
-  st.textContent = ready ? "Bluetooth جاهز" : "افتح من Chrome";
-  st.classList.toggle("ok", ready);
-  $("#homeLinkCard").addEventListener("click", () => {
-    if (ready) toast("اختر وصفة قهوة واضغط ▶ لتشغيلها على الجهاز");
+  st.textContent = ready ? "Bluetooth جاهز" : "Bluetooth غير متاح";
+  st.classList.toggle("on", ready);
+  st.addEventListener("click", () => {
+    if (ready) toast("اختر وصفة قهوة واضغط ▶ عشان تشتغل على الجهاز");
     else $("#bleSetupModal").classList.remove("hidden");
   });
 }
 
-// On mobile, default to home panel; on desktop keep manual
-if (window.innerWidth <= 767) {
-  showPanel("home");
-}
+showPanel("home");
 
 // --- session ---
 
@@ -288,7 +269,9 @@ function setHomeLogin(loggedIn, email) {
   if (!pill) return;
   pill.dataset.loggedIn = loggedIn ? "1" : "";
   pill.classList.toggle("on", !!loggedIn);
-  pill.textContent = loggedIn ? "✓ متصل بحساب XBloom" : "دخول حساب XBloom";
+  pill.textContent = loggedIn
+    ? "متصل بحساب XBloom. تسجيل الخروج"
+    : "سجّل دخول حساب XBloom عشان تنحفظ وصفاتك في التطبيق";
   syncHomeProfile(loggedIn ? email : null);
 }
 
@@ -575,89 +558,104 @@ $("#aiTryAgain")?.addEventListener("click", () => {
   $("#previewActions").classList.add("hidden");
 });
 
+// ── request options (hot/iced, strength, cups) ──
+const aiOpts = { serve: "hot", strength: "balanced", cups: 1 };
+
+function setAiOpt(opt, value) {
+  aiOpts[opt] = opt === "cups" ? Number(value) : value;
+  $$(`[data-opt="${opt}"] .opt-btn`).forEach((b) => b.classList.toggle("active", b.dataset.v === String(value)));
+}
+$$(".opt-btn").forEach((b) => b.addEventListener("click", () => setAiOpt(b.closest("[data-opt]").dataset.opt, b.dataset.v)));
+
+// Typing "باردة" / "قوية" / "كوبين" flips the matching buttons so they never disagree with the text.
+$("#aiDescInput").addEventListener("input", () => {
+  const i = XBRecipe.parse($("#aiDescInput").value);
+  if (i.mentioned.serve) setAiOpt("serve", i.serve);
+  if (i.mentioned.strength) setAiOpt("strength", i.strength);
+  if (i.mentioned.cups) setAiOpt("cups", i.cups >= 2 ? 2 : 1);
+});
+
+// The AI is optional: only call it when a model is actually configured.
+function aiReady() {
+  const model = $("#modelSelect")?.value;
+  if (!model) return false;
+  if (IS_STATIC && state.provider === "openrouter") return !!settings.orKey;
+  if (IS_STATIC) return false;
+  return true;
+}
+
+async function askAi(text, image) {
+  let fullText = "", gotRecipe = null, gotError = null;
+  if (IS_STATIC) {
+    await runAssistStatic(
+      text, image, { querySelector: () => null }, document.createElement("span"),
+      (t) => { fullText += t; },
+      (r) => { gotRecipe = r; },
+      (e) => { gotError = e; }
+    );
+    return { fullText, gotRecipe, gotError };
+  }
+  const resp = await fetch("/api/assist", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: text, model: $("#modelSelect").value || undefined, provider: state.provider, history: [], image: image || undefined }),
+  });
+  if (!resp.ok || !resp.body) return { fullText, gotRecipe, gotError: `HTTP ${resp.status}` };
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n"); buf = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let ev;
+      try { ev = JSON.parse(line); } catch { continue; }
+      if (ev.type === "token") fullText += ev.data;
+      else if (ev.type === "recipe") gotRecipe = normalizeRecipe(ev.recipe);
+      else if (ev.type === "error") gotError = ev.error;
+    }
+  }
+  return { fullText, gotRecipe, gotError };
+}
+
 // ── main brew handler ──
 $("#aiBrewBtn").addEventListener("click", async () => {
   const text = $("#aiDescInput").value.trim();
   const image = aiImage;
-  if (!text && !image) return toast("اكتب وصف المحصول أو ارفع صورة", "bad");
+  const intent = XBRecipe.parse(text || "قهوة", { serve: aiOpts.serve, strength: aiOpts.strength, cups: aiOpts.cups });
 
   showAiState("aiStateBrewing");
   const animTimer = startBrewAnimation();
+  const minDelay = new Promise((r) => setTimeout(r, 1400));
 
-  state.history = [];
-  state.history.push({ role: "user", content: text || "(attached coffee bag image)" });
-
-  let fullText = "", gotRecipe = null, gotError = null;
-  try {
-    if (IS_STATIC) {
-      const liveEl = { querySelector: () => null }; // dummy — not needed for new UI
-      await runAssistStatic(
-        text, image, liveEl, document.createElement("span"),
-        (t) => { fullText += t; },
-        (r) => { gotRecipe = r; },
-        (e) => { gotError = e; }
-      );
-    } else {
-      const resp = await fetch("/api/assist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          model: $("#modelSelect").value || undefined,
-          provider: state.provider,
-          history: [],
-          image: image || undefined,
-        }),
-      });
-      if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
-      const reader = resp.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split("\n"); buf = lines.pop();
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          let ev;
-          try { ev = JSON.parse(line); } catch { continue; }
-          if (ev.type === "token") fullText += ev.data;
-          else if (ev.type === "recipe") gotRecipe = normalizeRecipe(ev.recipe);
-          else if (ev.type === "error") gotError = ev.error;
-        }
-      }
-    }
-  } catch (err) {
-    gotError = String(err.message || err);
-  } finally {
-    clearInterval(animTimer);
+  let recipe = null, source = "engine";
+  if (aiReady()) {
+    try {
+      const request = `${text || (image ? "صمم لي وصفة من صورة الكيس" : "قهوة")}\n\n${XBRecipe.hint(intent)}`;
+      const { gotRecipe } = await askAi(request, image);
+      if (gotRecipe) { recipe = XBRecipe.finalize(gotRecipe, intent); source = "ai"; }
+    } catch { /* fall back to the built-in engine */ }
   }
+  if (!recipe) {
+    recipe = XBRecipe.build(intent);
+    if (image) recipe.notes += " (قراءة صورة الكيس تحتاج تفعيل الذكاء الاصطناعي المتقدم — صممتها من طلبك.)";
+  }
+  await minDelay;
+  clearInterval(animTimer);
 
-  // Show result state
+  state.history = [{ role: "user", content: text }];
+  state.preview = recipe;
   showAiState("aiStateResult");
-  const errBox = $("#resultErrBox");
-
-  if (gotError) {
-    if (errBox) { errBox.textContent = `تعذّر التوليد: ${gotError}`; errBox.classList.remove("hidden"); }
-    if ($("#resultName")) $("#resultName").textContent = "حدث خطأ";
-    if ($("#resultNotes")) $("#resultNotes").textContent = "";
-    return;
-  }
-  if (errBox) errBox.classList.add("hidden");
-
-  if (gotRecipe) {
-    state.preview = gotRecipe;
-    state.history.push({ role: "assistant", content: fullText });
-    if ($("#resultName")) $("#resultName").textContent = gotRecipe.name || "وصفة جديدة";
-    if ($("#resultNotes")) $("#resultNotes").textContent = gotRecipe.notes || "";
-    renderPreview(gotRecipe);
-    $("#previewBadge").classList.remove("hidden");
-    $("#previewActions").classList.add("hidden"); // actions are in result-acts now
-  } else {
-    if ($("#resultName")) $("#resultName").textContent = "لم تُعَد وصفة JSON";
-    if ($("#resultNotes")) $("#resultNotes").textContent = fullText.slice(0, 600);
-  }
+  $("#resultErrBox")?.classList.add("hidden");
+  $("#resultName").textContent = recipe.name || "وصفة جديدة";
+  $("#resultNotes").textContent = recipe.notes || "";
+  $("#resultSource").textContent = source === "ai" ? "صممها الذكاء الاصطناعي" : "صممها محرك XBloom Studio";
+  renderPreview(recipe);
+  $("#previewBadge").classList.remove("hidden");
+  $("#previewActions").classList.add("hidden");
 });
 
 // ── legacy compat stubs (other code references these) ──
@@ -771,27 +769,27 @@ function renderPreview(r) {
       <h2>${escapeHtml(r.name || "بدون اسم")}</h2>
       <span class="muted small">${isTea ? "شاي" : "قهوة"}</span>
     </div>
-    ${r.notes ? `<p class="muted small">${escapeHtml(r.notes)}</p>` : ""}
+    ${r.serve === "iced"
+      ? `<div class="serve-banner iced">🧊 بارد — حط <b>${r.ice_g || 0}g ثلج</b> في الكوب قبل التشغيل${r.total_ml ? ` · الناتج ${r.total_ml}ml` : ""}</div>`
+      : `<div class="serve-banner">☕ حار${r.total_ml ? ` · ${r.total_ml}ml` : ""}</div>`}
     <div class="stat-grid">
       ${recipeStats(r).map(([k, v]) => `<div class="stat"><b>${escapeHtml(v)}</b><span>${escapeHtml(k)}</span></div>`).join("")}
     </div>
     <div class="muted small" style="margin-bottom:.6rem">
       مجموع الماء المُدخل: ${sum} ml ${drift > 3 ? `<span class="bad">(فرق ${drift}%)</span>` : '<span class="ok">✓ مطابق</span>'}
     </div>
-    <div class="steps">
+    <ol class="psteps">
       ${steps.map((s, i) => `
-        <div class="step">
-          <div class="step-head"><b>${isTea ? `النقع ${i + 1}` : escapeHtml(s.name || (i === 0 ? "Bloom" : `Pour ${i + 1}`))}</b></div>
-          <div class="step-ctrls">
-            <div class="mini-stepper"><span>ماء</span><b>${s.volume_ml ?? "—"}</b></div>
-            <div class="mini-stepper"><span>حرارة</span><b>${s.temperature_c ?? "—"}°</b></div>
-            ${isTea
-              ? `<div class="mini-stepper"><span>نقع</span><b>${s.steep_seconds ?? "—"}ث</b></div>`
-              : `<div class="mini-stepper"><span>نمط</span><b>${escapeHtml(PATTERN_LABELS[s.pattern] || s.pattern || "circular")}</b></div>
-                 <div class="mini-stepper"><span>توقف</span><b>${s.pause_seconds ?? 0}ث</b></div>`}
-          </div>
-        </div>`).join("")}
-    </div>`;
+        <li class="pstep">
+          <b>${isTea ? `النقع ${i + 1}` : (i === 0 ? "البلوم" : `صبّة ${i + 1}`)}</b>
+          <span class="num">${s.volume_ml ?? "—"}ml</span>
+          <span class="num">${s.temperature_c ?? "—"}°</span>
+          ${isTea
+            ? `<span class="num">${s.steep_seconds ?? "—"}ث نقع</span>`
+            : `<span>${escapeHtml(PATTERN_LABELS[s.pattern] || s.pattern || "دائري")}</span>
+               <span class="num">${s.pause_seconds ? `انتظار ${s.pause_seconds}ث` : "بدون انتظار"}</span>`}
+        </li>`).join("")}
+    </ol>`;
   $("#previewActions").classList.remove("hidden");
 }
 
@@ -1059,7 +1057,7 @@ function defaultSteps(kind) {
 
 function setKindFlags() {
   const tea = manual.kind === "tea";
-  $$(".seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.kind === manual.kind));
+  $$(".seg-btn[data-kind]").forEach((b) => b.classList.toggle("active", b.dataset.kind === manual.kind));
   $$("[data-coffee-only]").forEach((el) => el.classList.toggle("hidden", tea));
   $$("[data-tea-only]").forEach((el) => el.classList.toggle("hidden", !tea));
   $("#stepsTitle").innerHTML = (tea ? "النقعات" : "الصبات") + ` <span class="steps-count" id="stepsCount">${manual.steps.length}</span>`;
@@ -1343,7 +1341,7 @@ $("#saveManual").addEventListener("click", async () => {
 
 $("#manualImportBtn").addEventListener("click", () => showPanel("import"));
 
-$$(".seg-btn").forEach((b) => b.addEventListener("click", () => {
+$$(".seg-btn[data-kind]").forEach((b) => b.addEventListener("click", () => {
   if (manual.kind === b.dataset.kind) return;
   manual.kind = b.dataset.kind;
   manual.dose_g = clampN(manual.dose_g, ...LIMITS[manual.kind].dose);
@@ -1701,6 +1699,8 @@ PROCESS ADJUSTMENTS: Washed/dense: grind 3-5 finer | Natural/honey/anaerobic: gr
 COFFEE STEPS: dose_g TOTAL at top level. Sum of pour volumes = dose_g*ratio ±5%. Bloom = first pour 2-2.5x dose, long pause. 2-7 pours total.
 TEA: dose_g = total leaf weight. Green 70-80°C. White 75-85°C. Oolong 85-95°C. Black 90-100°C. Herbal 100°C. 1-3 steeps.
 DIAL-IN: sour/under = finer+hotter | bitter/over = coarser+cooler | weak = higher ratio | strong = lower ratio.
+HOT vs ICED: default HOT. ICED (بارد/مثلج/آيس/iced/cold) = brew hot onto ice: final liquid ≈ dose×15, ice 40%, hot water (sum of pours) 60%; grind ~6 finer, +1°C, bloom 2× dose 30-35s, 2 main pours. Add "serve":"iced","ice_g":N, name starts with "آيس", notes say how much ice to put in the cup. Cold brew is impossible on the machine → give iced instead.
+VAGUE REQUESTS: never ask questions. "سو قهوة" = medium washed 15g hot 1:15.5. Write name/notes in the user's language.
 OUTPUT: Reply with ONE raw JSON object only. No markdown, no text outside JSON. Use "kind":"coffee"+"pours" OR "kind":"tea"+"steeps". Include "name","dose_g","ratio","notes"(1 paragraph).`;
 
 async function runAssistStatic(text, image, liveEl, timerEl, onToken, onRecipe, onError) {

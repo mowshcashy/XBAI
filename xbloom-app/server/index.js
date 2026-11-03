@@ -162,19 +162,27 @@ function normalizeRecipe(r) {
     if (!pours.length) return null;
 
     const dose = clamp(r.dose_g, 1, 31, 15);
-    const ratio = clamp(r.ratio, 8, 20, 16);
-    // auto-balance volumes if they are far off the target total
-    const target = dose * ratio;
+    const iced = r.serve === "iced" || Number(r.ice_g) > 0;
     const sum = pours.reduce((a, p) => a + p.volume_ml, 0);
-    if (target > 0 && sum > 0 && Math.abs(sum - target) / target > 0.05) {
-      const factor = target / sum;
-      pours = pours.map((p) => ({ ...p, volume_ml: Math.max(1, Math.round(p.volume_ml * factor)) }));
+    let ratio = clamp(r.ratio, 8, 20, 16);
+    if (iced) {
+      // Pours carry only the hot water; the ice makes up the rest, so derive the ratio from the pours.
+      ratio = Number(clamp(sum / dose, 5, 20, 9).toFixed(1));
+    } else {
+      // auto-balance volumes if they are far off the target total
+      const target = dose * ratio;
+      if (target > 0 && sum > 0 && Math.abs(sum - target) / target > 0.05) {
+        const factor = target / sum;
+        pours = pours.map((p) => ({ ...p, volume_ml: Math.max(1, Math.round(p.volume_ml * factor)) }));
+      }
     }
     return {
       kind, name, dose_g: dose, ratio,
       grind_size: Math.round(clamp(r.grind_size, 40, 120, 70)),
       grind_rpm: Math.round(clamp(r.grind_rpm, 60, 120, 80)),
       color, pours, notes,
+      serve: iced ? "iced" : "hot",
+      ice_g: iced ? Math.round(clamp(r.ice_g, 0, 400, 0)) || undefined : undefined,
     };
   }
 
