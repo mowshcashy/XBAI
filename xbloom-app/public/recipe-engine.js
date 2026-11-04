@@ -86,7 +86,7 @@
       roast: null, process: null, origin: null,
       strength: "balanced", cups: 1, fresh: has(t, W.fresh),
       coldBrewAsked: has(t, W.coldBrew),
-      dose: null, ratio: null, totalMl: null, teaType: "black",
+      dose: null, ratio: null, totalMl: null, altitude: null, teaType: "black",
     };
 
     if (has(t, W.iced) || intent.coldBrewAsked) intent.serve = "iced";
@@ -117,6 +117,12 @@
     if (ratio) intent.ratio = Number(ratio[1]);
     const ml = t.match(/(\d{3})\s*(?:ml|مل|ملي)/);
     if (ml) intent.totalMl = Number(ml[1]);
+    // Growing altitude: "1600", "1600م", "2000 متر", "1,900 masl" — not grams/ml/ratios.
+    const altRe = /(?:^|[^\d.:/])(\d{1},?\d{3}|\d{3})\s*(m|م|متر|masl|meters?)?(?![\d.]|\s*(?:ml|مل|g|gr|gram|جرام|غرام|قرام|جم|ج(?![؀-ۿ])))/g;
+    for (const m of t.matchAll(altRe)) {
+      const v = Number(m[1].replace(",", ""));
+      if (v >= 800 && v <= 2600 && (m[2] || v >= 1000 || /ارتفاع|altitude/.test(t))) { intent.altitude = v; break; }
+    }
 
     if (intent.kind === "tea") {
       if (has(t, W.teaHerbal)) intent.teaType = "herbal";
@@ -138,6 +144,7 @@
       serve: has(t, W.iced) || has(t, W.hot) || intent.coldBrewAsked,
       strength: intent.strength !== "balanced",
       cups: intent.cups !== 1,
+      process: has(t, [...W.anaerobic, ...W.honey, ...W.natural, ...W.washed]),
     };
     Object.assign(intent, Object.fromEntries(Object.entries(overrides).filter(([, v]) => v != null)));
     return intent;
@@ -149,84 +156,222 @@
     return out;
   }
 
+  // ---------- what the roasters' library teaches ----------
+  // Every coffee recipe in the library becomes a row; a request is answered by the
+  // recipes with the closest dose (kernel-weighted medians), then nudged for roast,
+  // process and altitude by bounded, proportional rules.
+  let MODEL = null;
+  const brewSeconds = (pours) => pours.reduce((s, p, k) => {
+    const v = Number(p.volume_ml ?? p.v) || 0;
+    const f = Number(p.flow_rate ?? p.flow) || 3;
+    const pause = Number(p.pause_seconds ?? p.p) || 0;
+    return s + v / f + (k < pours.length - 1 ? pause : 0);
+  }, 0);
+  const median = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor((s.length - 1) / 2)] : null; };
+
+  function buildModel(list) {
+    const rows = list.filter((r) => !r.tea && r.dose && r.pours?.length >= 2 && r.grind).map((r) => {
+      const water = r.pours.reduce((a, p) => a + p.v, 0);
+      const mids = r.pours.slice(1, -1).map((p) => p.p);
+      return {
+        serve: r.serve, dose: r.dose, approved: !!r.approved,
+        grind: r.grind, rpm: r.rpm || null, temp: r.pours[0].t,
+        ratio: water / r.dose, iceK: r.ice ? r.ice / r.dose : null,
+        bloomX: r.pours[0].v / r.dose, bloomPause: r.pours[0].p,
+        midPause: mids.length ? median(mids) : null,
+        n: r.pours.length, time: brewSeconds(r.pours),
+      };
+    }).filter((r) => r.ratio >= 6 && r.ratio <= 20 && r.time > 40 && r.time < 400);
+    MODEL = rows.length >= 30 ? rows : null;
+  }
+
+  function wq(pairs, q) {
+    const s = pairs.filter(([v]) => v != null && Number.isFinite(v)).sort((a, b) => a[0] - b[0]);
+    if (!s.length) return null;
+    const tot = s.reduce((a, [, w]) => a + w, 0);
+    let acc = 0;
+    for (const [v, w] of s) { acc += w; if (acc >= tot * q) return v; }
+    return s[s.length - 1][0];
+  }
+
+  // Weighted picture of the library around one dose.
+  function predict(serve, dose) {
+    if (!MODEL) return null;
+    const rows = MODEL.filter((r) => r.serve === serve);
+    if (rows.length < 10) return null;
+    const w = rows.map((r) => Math.exp(-(((r.dose - dose) / 2.5) ** 2)) * (r.approved ? 1.5 : 1));
+    const f = (key, q = 0.5) => wq(rows.map((r, k) => [r[key], w[k]]), q);
+    return {
+      count: w.filter((x) => x > 0.35).length,
+      grind: f("grind"), rpm: f("rpm"), temp: f("temp"), ratio: f("ratio"), iceK: f("iceK"),
+      bloomX: f("bloomX"), bloomPause: f("bloomPause"), midPause: f("midPause"), n: f("n"),
+      time: f("time"), t10: f("time", 0.1), t75: f("time", 0.75), t90: f("time", 0.9),
+    };
+  }
+
+  // Proportional adjustments on top of the library median (which sits at a light-medium
+  // roast, ~1500 m, mixed processes). Each returns the deltas plus the reason shown to the user.
+  const ROAST_DELTA = {
+    light:       { grind: -2, temp: 1.5, rpm: 5, why: "تحميص فاتح: حبة أقسى وأقل ذوبان → طحن أنعم بدرجتين وحرارة أعلى" },
+    medium:      { grind: 0, temp: 0, rpm: 0, why: null },
+    medium_dark: { grind: 3, temp: -1.5, rpm: -10, why: "متوسط غامق: يذوب أسرع → طحن أخشن وحرارة أقل عشان ما تطلع مرارة" },
+    dark:        { grind: 6, temp: -3, rpm: -15, why: "تحميص غامق: يستخلص بسرعة → طحن أخشن واضح وحرارة أقل" },
+  };
+  const PROCESS_DELTA = {
+    washed:    { grind: -1, temp: 0.5, ratio: 0, pause: 0, why: "مغسول: نظيف وكثيف → أنعم شوي يبرز الحموضة والوضوح" },
+    natural:   { grind: 1.5, temp: -0.5, ratio: -0.3, pause: 0, why: "طبيعي: سكريات وفواكه عالية ويستخلص أسرع → أخشن شوي وحرارة أقل" },
+    honey:     { grind: 1, temp: -0.5, ratio: -0.2, pause: 0, why: "عسلي: حلاوة وقوام → أخشن شوي" },
+    anaerobic: { grind: 3, temp: -1.5, ratio: 0.5, pause: 5, why: "لاهوائي: التخمير يخلي الحبة تستخلص بسرعة وتطلع حدّة → طحن أخشن بثلاث درجات، حرارة أقل، ماء أكثر شوي وبلوم أطول للغازات" },
+  };
+  // Denser high-grown beans need finer and hotter; low-grown the opposite. Linear around 1500 m.
+  function altitudeDelta(alt) {
+    if (!alt) return null;
+    const steps = (alt - 1500) / 100;
+    const grind = clamp(-0.6 * steps, -4, 4);
+    const temp = clamp(0.3 * steps, -2, 2);
+    let why;
+    if (Math.abs(steps) < 2) why = `ارتفاع ${alt}م متوسط → تعديل بسيط (طحن ${grind >= 0 ? "+" : ""}${grind.toFixed(1)}، حرارة ${temp >= 0 ? "+" : ""}${temp.toFixed(1)}°)`;
+    else if (steps > 0) why = `ارتفاع ${alt}م عالي: حبة كثيفة → طحن أنعم ${Math.abs(grind).toFixed(1)} وحرارة +${temp.toFixed(1)}°`;
+    else why = `ارتفاع ${alt}م منخفض: حبة أقل كثافة → طحن أخشن ${grind.toFixed(1)} وحرارة ${temp.toFixed(1)}°`;
+    return { grind, temp, why };
+  }
+
+  // Keep the brew inside the library's time band for this dose: trim or add pauses
+  // (mid pauses first, then the bloom), never the water.
+  function fitTiming(pours, band) {
+    if (!band || pours.length < 2) return null;
+    const before = Math.round(brewSeconds(pours));
+    const last = pours.length - 1;
+    const mids = () => pours.slice(1, last);
+    let t = brewSeconds(pours);
+    if (t > band.hi) {
+      let over = t - band.hi;
+      // An over-long bloom goes first (roasters rarely wait past ~35 s), then all waits shrink together.
+      const bloomCut = Math.min(over, Math.max(0, pours[0].pause_seconds - band.maxBloom));
+      pours[0].pause_seconds -= bloomCut; over -= bloomCut;
+      const slack = [...mids().map((p) => Math.max(0, p.pause_seconds - 5)), Math.max(0, pours[0].pause_seconds - band.minBloom)];
+      const room = slack.reduce((a, b) => a + b, 0);
+      if (over > 0 && room > 0) {
+        const k = Math.min(1, over / room);
+        mids().forEach((p, j) => { p.pause_seconds -= slack[j] * k; });
+        pours[0].pause_seconds -= slack[slack.length - 1] * k;
+      }
+    } else if (t < band.lo && mids().length) {
+      let under = band.lo - t;
+      for (const p of mids()) { const add = Math.min(under, Math.max(0, 25 - p.pause_seconds)); p.pause_seconds += add; under -= add; }
+    }
+    pours.forEach((p) => { p.pause_seconds = Math.round(p.pause_seconds); });
+    const after = Math.round(brewSeconds(pours));
+    return after !== before ? { before, after } : null;
+  }
+  const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+  function timeBand(serve, dose, fresh) {
+    const P = predict(serve, dose);
+    const iced = serve === "iced";
+    const lo = P?.t10 ?? (iced ? 75 : 90);
+    const hi = (P?.t75 ?? (iced ? 125 : 140)) + (fresh ? 10 : 0);
+    return { lo, hi, typical: P?.time ?? (iced ? 113 : 126), minBloom: iced ? 20 : 15, maxBloom: fresh ? 45 : 35 };
+  }
+
   function buildCoffee(i) {
     const R = ROASTS[i.roast] || ROASTS.medium;
     const iced = i.serve === "iced";
-    let grind = R.grind, temp = R.temp, ratio = R.ratio, bloomX = R.bloomX, bloomPause = R.bloomPause;
-
-    if (i.process === "washed") grind -= 2;
-    if (i.process === "natural" || i.process === "honey") { grind += 2; ratio -= 0.3; }
-    if (i.process === "anaerobic") { grind += 3; temp -= 1; ratio -= 0.3; }
-    if (i.strength === "strong") ratio -= 1.5;
-    if (i.strength === "weak") ratio += 1.5;
-    if (i.fresh) { bloomX += 0.5; bloomPause += 10; }
-    if (i.ratio) ratio = i.ratio;
+    const why = [];
 
     const perCup = iced ? 17 : 15;
     let dose = i.dose || (i.cups >= 2 ? (iced ? 25 : 24) : i.cups > 1 ? (iced ? 22 : 20) : perCup);
     dose = clamp(round(dose), 8, 31);
 
-    let total;
-    if (i.totalMl) total = i.totalMl;
-    else if (iced) total = dose * (ratio + 1);
-    else total = dose * ratio;
-    total = Math.round(clamp(total, dose * 8, dose * 20));
-
-    let ice = 0, hotWater = total;
-    if (iced) {
-      // Roasters' iced median: hot water ≈ 10× dose (59% of the drink), ice ≈ 6.7× dose.
-      hotWater = Math.round(total * 0.6);
-      ice = round(total - hotWater, 5);
-      grind -= 5;
-      temp += 1;
-      bloomX = Math.min(bloomX, 2.3);
-      bloomPause = 30;
+    const P = predict(i.serve, dose);
+    let grind, temp, ratio, rpm, bloomX, bloomPause, midPause, nPours, iceK;
+    if (P) {
+      grind = P.grind; temp = P.temp; ratio = P.ratio; rpm = P.rpm || 100;
+      bloomX = clamp(P.bloomX, 1.8, 3); bloomPause = clamp(P.bloomPause, 15, 40);
+      midPause = clamp(P.midPause ?? 15, 5, 25); nPours = clamp(Math.round(P.n), 2, 5);
+      iceK = clamp(P.iceK ?? 6.7, 5, 8);
+      why.push(`بنيتها على ${P.count} وصفة محامص بجرعة قريبة من ${dose}g (متوسطهم: طحن ${Math.round(P.grind)}، حرارة ${Math.round(P.temp)}°، وقت ${mmss(P.time)})`);
+    } else {
+      grind = R.grind + (iced ? -5 : 0); temp = R.temp + (iced ? 1 : 0);
+      ratio = iced ? 10 : R.ratio; rpm = R.rpm - (iced ? 15 : 0);
+      bloomX = iced ? Math.min(R.bloomX, 2.3) : R.bloomX; bloomPause = iced ? 30 : R.bloomPause;
+      midPause = 15; nPours = iced ? 3 : R.mains + 1; iceK = 6.5;
     }
-    grind = clamp(Math.round(grind), 1, 120);
-    temp = clamp(Math.round(temp), 80, 95);
+
+    // Library median ≈ light-medium; shift for the roast asked.
+    const rd = ROAST_DELTA[i.roast] || ROAST_DELTA.medium;
+    if (P) { grind += rd.grind; temp += rd.temp; rpm += rd.rpm; if (rd.why) why.push(rd.why); }
+
+    const pd = PROCESS_DELTA[i.process];
+    if (pd) { grind += pd.grind; temp += pd.temp; ratio += pd.ratio; bloomPause += pd.pause; if (i.mentioned?.process || i.process === "anaerobic") why.push(pd.why); }
+
+    const ad = altitudeDelta(i.altitude);
+    if (ad) { grind += ad.grind; temp += ad.temp; why.push(ad.why); }
+
+    if (i.strength === "strong") ratio -= 1;
+    if (i.strength === "weak") ratio += 1;
+    if (i.fresh) { bloomX += 0.3; bloomPause += 10; why.push("محمّص طازج: بلوم أكبر وانتظار أطول يطلع الغازات"); }
+    if (i.ratio && !iced) ratio = i.ratio;
+
+    // Big-dose roaster recipes lean on 1:12-13; a person asking for two cups still wants a full 1:15-ish cup.
+    if (!iced && !i.ratio) ratio = clamp(ratio, 14.5, 16.5);
+    ratio = iced ? clamp(ratio, 8, 13) : clamp(ratio, 12, 18);
+    let hotWater, ice = 0, total;
+    if (iced) {
+      if (i.totalMl) { total = i.totalMl; hotWater = Math.round(total * 0.6); ice = round(total - hotWater, 5); }
+      else { hotWater = Math.round(dose * ratio); ice = round(dose * iceK, 5); total = hotWater + ice; }
+    } else {
+      hotWater = Math.round(i.totalMl ? clamp(i.totalMl, dose * 12, dose * 18) : dose * ratio);
+      total = hotWater;
+    }
+
+    grind = clamp(Math.round(grind), iced ? 30 : 35, iced ? 70 : 78);
+    temp = clamp(Math.round(temp), 82, 95);
+    rpm = clamp(Math.round(rpm / 5) * 5, 60, 120);
 
     const bloom = Math.round(dose * bloomX);
-    let mains = iced ? 2 : R.mains;
-    let rest = hotWater - bloom;
-    while (rest / mains > 240) mains++;
-    const weights = mains === 2 ? [0.55, 0.45] : mains === 3 ? [0.4, 0.33, 0.27] : Array(mains).fill(1 / mains);
+    let mains = Math.max(iced ? 2 : 2, nPours - 1);
+    const rest = hotWater - bloom;
+    while (rest / mains > (iced ? 110 : 130) && mains < 5) mains++;
+    const weights = mains === 2 ? [0.55, 0.45] : mains === 3 ? [0.38, 0.33, 0.29] : Array(mains).fill(1 / mains);
     const mainVols = splitWater(rest, weights);
-    const pauses = iced ? [10, 0] : R.pauses;
+    const darkish = i.roast === "dark" || i.roast === "medium_dark";
 
     const pours = [{
       name: "Bloom", volume_ml: bloom, temperature_c: temp, pattern: "spiral",
-      flow_rate: 3.0, pause_seconds: bloomPause, agitate_before: false, agitate_after: i.roast !== "dark",
+      flow_rate: 3.0, pause_seconds: Math.round(bloomPause), agitate_before: false, agitate_after: i.roast !== "dark",
     }, ...mainVols.map((v, k) => ({
       name: `Pour ${k + 2}`, volume_ml: v,
-      temperature_c: i.roast === "dark" || i.roast === "medium_dark" ? temp - k : temp,
+      temperature_c: darkish ? temp - k : temp,
       pattern: k === mainVols.length - 1 && !iced && i.roast !== "light" ? "centered" : R.pattern,
-      flow_rate: 3.2, pause_seconds: pauses[k] ?? 0, agitate_before: false, agitate_after: false,
+      flow_rate: 3.2, pause_seconds: k === mainVols.length - 1 ? 0 : Math.round(midPause), agitate_before: false, agitate_after: false,
     }))];
 
+    const band = timeBand(i.serve, dose, i.fresh);
+    const fit = fitTiming(pours, band);
+    const secs = Math.round(brewSeconds(pours));
+    if (fit && fit.before > fit.after) why.push(`قصّرت الانتظار عشان الوقت ما يسحب (${mmss(fit.before)} → ${mmss(fit.after)})`);
+
     const originLabel = i.origin ? i.origin.label : "";
-    const nameCore = originLabel ? `${originLabel} ${R.label}` : `تحميص ${R.label}`;
+    const procLabel = i.process && (i.mentioned?.process || i.process === "anaerobic") ? ` ${PROCESS_LABEL[i.process]}` : "";
+    const nameCore = originLabel ? `${originLabel} ${R.label}${procLabel}` : `تحميص ${R.label}${procLabel}`;
     const name = iced
       ? `آيس ${nameCore} (ثلج ${ice}g)`
-      : `${originLabel ? nameCore : `قهوة ${nameCore}`}${i.cups >= 2 ? " لكوبين" : ""}`;
+      : `${originLabel ? nameCore : `قهوة ${nameCore}`}${i.altitude ? ` ${i.altitude}م` : ""}${i.cups >= 2 ? " لكوبين" : ""}`;
     const machineRatio = Number((hotWater / dose).toFixed(1));
 
-    const parts = [];
-    parts.push(`تحميص ${R.label}${i.process ? ` ${PROCESS_LABEL[i.process]}` : ""}${i.origin ? ` (${i.origin.flavor})` : ""}`);
-    parts.push(`حرارة ${temp}° وطحن ${grind}${iced ? " (أنعم من العادي لأن الماء أقل)" : ""}`);
-    parts.push(`${dose}g بن مع ${hotWater}ml ماء${iced ? ` حار` : ` (نسبة 1:${machineRatio})`}`);
-    parts.push(`بلوم ${bloom}ml وانتظار ${bloomPause} ثانية ثم ${mainVols.length} صبات`);
-    let notes = parts.join("، ") + ".";
-    if (iced) notes += ` قبل التشغيل حط ${ice}g ثلج في الكوب أو الإبريق تحت الجهاز — الماء الحار يذوب الثلج ويطلع لك ${total}ml قهوة باردة متوازنة.`;
+    let notes = `${dose}g بن مع ${hotWater}ml ماء${iced ? " حار" : ` (1:${machineRatio})`}، حرارة ${temp}°، طحن ${grind}، بلوم ${bloom}ml ثم ${mainVols.length} صبات — الوقت المتوقع ${mmss(secs)}.`;
+    if (iced) notes += ` قبل التشغيل حط ${ice}g ثلج في الكوب — الماء الحار يذوب الثلج ويطلع لك ${total}ml قهوة باردة.`;
+    if (why.length) notes += " " + why.join(". ") + ".";
     if (i.coldBrewAsked) notes += " ملاحظة: الكولد برو يحتاج نقع ساعات وما يسويه الجهاز، فسويت لك آيس بالطريقة اليابانية بنفس الروح.";
-    if (i.strength === "strong") notes += " خليتها أقوى بنسبة ماء أقل.";
-    if (i.strength === "weak") notes += " خليتها أخف بنسبة ماء أعلى.";
+    if (i.strength === "strong") notes += " خليتها أقوى بماء أقل.";
+    if (i.strength === "weak") notes += " خليتها أخف بماء أكثر.";
 
     return {
       kind: "coffee", name: name.slice(0, 60), notes,
-      dose_g: dose, ratio: machineRatio, grind_size: grind, grind_rpm: iced ? Math.max(60, R.rpm - 15) : R.rpm,
+      dose_g: dose, ratio: machineRatio, grind_size: grind, grind_rpm: rpm,
       color: iced ? "#9FC5E8" : R.color,
       roast: i.roast === "medium_dark" ? "dark" : i.roast, process: i.process || undefined,
-      serve: i.serve, ice_g: ice || undefined, total_ml: total,
+      serve: i.serve, ice_g: ice || undefined, total_ml: total, brew_seconds: secs,
       pours,
     };
   }
@@ -276,6 +421,7 @@
       i.origin ? `origin ${i.origin.id}` : null,
       i.strength !== "balanced" ? `strength ${i.strength}` : null,
       i.cups !== 1 ? `${i.cups} cups` : null,
+      i.altitude ? `grown at ${i.altitude} m (denser above 1500 m: slightly finer/hotter; below: coarser/cooler)` : null,
     ].filter(Boolean);
     return `Parsed request: ${bits.join(", ")}.`;
   }
@@ -343,6 +489,10 @@
       }
       r.name = n;
     }
+    // Keep the timing in the library's band for this dose (AI answers often drag).
+    r.pours = r.pours.map((p) => ({ ...p, pause_seconds: clamp(Math.round(Number(p.pause_seconds) || 0), 0, 60) }));
+    fitTiming(r.pours, timeBand(iced ? "iced" : "hot", r.dose_g, intent?.fresh));
+    r.brew_seconds = Math.round(brewSeconds(r.pours));
     const water = total();
     r.ratio = Number((water / r.dose_g).toFixed(1));
     r.serve = r.ice_g ? "iced" : (r.serve || intent?.serve || "hot");
@@ -357,6 +507,7 @@
       `حرارة ${r.pours[0].temperature_c}°`,
       `طحن ${r.grind_size}`,
       `${r.pours.length} صبات`,
+      `الوقت ~${mmss(r.brew_seconds)}`,
     ].filter(Boolean).join("، ") + "." + (r.ice_g ? ` حط ${Math.round(r.ice_g)}g ثلج في الكوب قبل التشغيل.` : "");
     const prose = String(r.notes || "")
       .split(/(?<=[.!؟?\n])\s*/)
@@ -374,6 +525,11 @@
     "قوي", "قويه", "خفيف", "خفيفه", "محمصه", "recipe", "iced", "ice", "hot", "cold", "new", "the", "coffee",
     "draft", "by", "for", "roastery", "roasters", "with", "بواسطه",
     "توازن", "حلاوه", "وضوح", "قوام",
+    "فاتح", "فاتحه", "غامق", "غامقه", "داكن", "متوسط", "متوسطه", "وسط", "تحميص", "محمص", "كبير", "كبيره", "صغير",
+    "لكوبين", "شخصين", "لشخصين", "طازج", "طازجه", "حلو", "حلوه", "زين", "زينه", "مزبوط", "عادي", "عاديه", "كويس",
+    "لاهوائي", "لاهوائيه", "هوائي", "هوائيه", "طبيعي", "طبيعيه", "مغسول", "مغسوله", "عسلي", "عسليه",
+    "natural", "washed", "honey", "anaerobic", "light", "dark", "medium", "roast", "fresh",
+    "ارتفاع", "متر", "حبوب", "حبه", "mug",
   ));
   const DECAF = kw("ديكاف", "دي كاف", "decaf");
   const STYLE_WORDS = { [norm("توازن")]: "balance", [norm("حلاوة")]: "sweet", [norm("وضوح")]: "clarity", [norm("قوام")]: "body" };
@@ -381,6 +537,7 @@
   const tokens = (text) => norm(text).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w));
 
   function setReference(list) {
+    buildModel(list || []);
     REF = (list || []).filter((r) => !r.tea && r.dose && r.pours?.length).map((r) => ({
       ...r,
       _tok: tokens(r.name),
@@ -429,20 +586,37 @@
       agitate_before: false,
       agitate_after: !!p.ag,
     }));
+    let grind = Number(ref.grind ?? 55), temp0 = pours[0].temperature_c;
+    const adj = [];
+    if (k !== 1) {
+      const a = predict(ref.serve, ref.dose), b = predict(ref.serve, dose);
+      if (a && b) grind += b.grind - a.grind;
+    }
+    const refProc = ["anaerobic", "honey", "natural", "washed"].find((p) => has(norm(ref.name), W[p]));
+    const pd = PROCESS_DELTA[i.process];
+    if (pd && i.mentioned?.process && refProc !== i.process) { grind += pd.grind; temp0 += pd.temp; adj.push(pd.why); }
+    const ad = altitudeDelta(i.altitude);
+    if (ad && !norm(ref.name).includes(String(i.altitude))) { grind += ad.grind; temp0 += ad.temp; adj.push(ad.why); }
+    const dt = Math.round(temp0) - pours[0].temperature_c;
+    if (dt) pours.forEach((p) => { p.temperature_c = clamp(p.temperature_c + dt, 40, 95); });
+    grind = clamp(Math.round(grind), 1, 120);
+    const fit = fitTiming(pours, timeBand(ref.serve, dose, i.fresh));
+    if (fit && fit.before > fit.after) adj.push(`قصّرت الانتظار (${mmss(fit.before)} → ${mmss(fit.after)})`);
     const water = pours.reduce((a, p) => a + p.volume_ml, 0);
     const ice = iced ? round((ref.ice || water * 0.65) * k, 5) : 0;
     let name = ref.name;
     if (iced && !/ثلج\s*\d+/.test(name)) name = `${name} (ثلج ${ice}g)`;
     if (i.cups >= 2) name = `${name} لكوبين`;
     let notes = `مبنية على وصفة «${ref.name}» من ${ref.roaster}${ref.approved ? " (معتمدة من المحمصة)" : ""}: `
-      + `${dose}g بن، ${water}ml ماء${ice ? ` و${ice}g ثلج` : ""}، حرارة ${pours[0].temperature_c}°، طحن ${ref.grind ?? "—"}.`;
+      + `${dose}g بن، ${water}ml ماء${ice ? ` و${ice}g ثلج` : ""}، حرارة ${pours[0].temperature_c}°، طحن ${grind}، الوقت ~${mmss(brewSeconds(pours))}.`;
     if (iced) notes += ` قبل التشغيل حط ${ice}g ثلج في الكوب.`;
     if (k !== 1) notes += ` كبّرت الكمية من ${ref.dose}g إلى ${dose}g بنفس النسب.`;
     if (sk !== 1) notes += sk < 1 ? " خليتها أقوى بماء أقل." : " خليتها أخف بماء أكثر.";
+    if (adj.length) notes += " " + adj.join(". ") + ".";
     return {
       kind: "coffee", name: name.slice(0, 60), notes,
       dose_g: dose, ratio: Number((water / dose).toFixed(1)),
-      grind_size: clamp(Math.round(ref.grind ?? 55), 1, 120), grind_rpm: clamp(Math.round(ref.rpm ?? 100), 60, 120),
+      grind_size: grind, brew_seconds: Math.round(brewSeconds(pours)), grind_rpm: clamp(Math.round(ref.rpm ?? 100), 60, 120),
       color: ref.color || (iced ? "#9FC5E8" : "#B08968"),
       serve: ref.serve, ice_g: ice || undefined, total_ml: water + ice,
       basedOn: { name: ref.name, roaster: ref.roaster, approved: ref.approved, link: ref.link },
@@ -475,10 +649,11 @@
       intent.serve === "iced"
         ? "Library medians for this style: dose 17g, hot water ≈ 10× dose, ice ≈ 6.7× dose, 92°C, grind 50, ~82 rpm, 3 pours."
         : "Library medians for this style: dose 18g, ratio 1:15, 91°C, grind 55, 100 rpm, bloom 2.3× dose, 4 pours.",
+      (() => { const b = timeBand(intent.serve, intent.dose || (intent.serve === "iced" ? 17 : 15), intent.fresh); return `Total brew time (water/flow + pauses) should land ${Math.round(b.lo)}-${Math.round(b.hi)} s, typical ${Math.round(b.typical)} s; keep pauses short (bloom 15-30 s, others 5-20 s).`; })(),
     ].join("\n");
   }
 
   const fromRef = (ref) => fromReference(ref, { cups: 1, strength: "balanced" });
 
-  window.XBRecipe = { parse, build, design, hint, finalize, setReference, match, compose, referenceHint, fromRef };
+  window.XBRecipe = { parse, build, design, hint, finalize, setReference, match, compose, referenceHint, fromRef, predict, brewSeconds };
 })();
