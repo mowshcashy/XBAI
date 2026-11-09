@@ -501,6 +501,26 @@ textarea{resize:vertical;font-family:inherit}
 .mlog time{color:var(--muted);font-size:.76rem;min-width:4.5rem}
 .mlog li.bad span{color:var(--danger)}
 
+/* ---------- hardware lab ---------- */
+.lab-card{margin-bottom:.8rem}
+.lab-card summary{cursor:pointer;list-style:none;display:flex;flex-direction:column;gap:.2rem}
+.lab-card summary::-webkit-details-marker{display:none}
+.lab-card[open] summary{margin-bottom:.4rem}
+.lab-status{font-size:.82rem;color:var(--text-2);min-height:1.2em;margin:0}
+.lab-sub{font-size:.9rem;font-weight:500;margin:.2rem 0 0}
+.lab-real{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.45rem}
+.lab-real .btn{display:flex;flex-direction:column;align-items:flex-start;gap:.15rem;text-align:start;font-size:.82rem;height:auto;padding:.6rem .75rem;white-space:normal}
+.lab-real .btn span{font-size:.7rem;color:var(--muted)}
+.lab-group{margin-bottom:.7rem}
+.lab-group h3{font-size:.8rem;color:var(--muted);font-weight:500;margin:0 0 .3rem}
+.lab-row{display:grid;grid-template-columns:1fr auto;gap:.15rem .8rem;padding:.4rem 0;border-bottom:1px solid var(--line);font-size:.84rem}
+.lab-row b{font-weight:500}
+.lab-row small{grid-column:1/-1;color:var(--muted);font-size:.74rem;overflow-wrap:anywhere}
+.lab-row.ok b{color:var(--ok)}
+.lab-row.bad b{color:var(--danger)}
+.lab-acts-row{display:flex;flex-wrap:wrap;gap:.45rem}
+.lab-acts-row .btn{flex:1 1 160px}
+
 /* ---------- library ---------- */
 .lib-filters{display:flex;flex-direction:column;gap:.6rem;margin-bottom:.6rem}
 .lib-row{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center}

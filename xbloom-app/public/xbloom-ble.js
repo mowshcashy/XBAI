@@ -61,29 +61,35 @@
   const PATTERN_CODES = { "spiral|true": [2, 2], "spiral|false": [2, 0], "ring|false": [1, 0], "center|false": [0, 1] };
   const MANUAL_PATTERN = { centered: 0, center: 0, circular: 1, ring: 1, spiral: 2 };
 
+  // Ranges the official app allows. The hardware lab passes wider ones to find the real limits.
+  const LIMITS = { dose: [1, 31], temp: [40, 95], flow10: [30, 35], grind: [1, 80], rpm: [60, 120], pause: [0, 99] };
+  // Hard ceilings the lab never crosses: one byte per field, and no water past boiling.
+  const LAB_LIMITS = { dose: [1, 60], temp: [20, 100], flow10: [10, 60], grind: [0, 150], rpm: [20, 200], pause: [0, 127] };
+
   // Our recipe spec → protocol recipe (machine-valid ranges).
-  function toMachine(spec) {
-    const dose = clampInt(spec.dose_g, 1, 31, 15); // same ceiling as XBloom recipes (library goes to 30g)
-    const rpm = Math.round(clampInt(spec.grind_rpm, 60, 120, 80) / 10) * 10;
+  function toMachine(spec, L = LIMITS) {
+    const dose = clampInt(spec.dose_g, ...L.dose, 15); // same ceiling as XBloom recipes (library goes to 30g)
+    const rpm = L === LIMITS ? Math.round(clampInt(spec.grind_rpm, ...L.rpm, 80) / 10) * 10 : clampInt(spec.grind_rpm, ...L.rpm, 80);
     const pours = (spec.pours || []).map((p, i) => {
       const pattern = PATTERNS[p.pattern] || "spiral";
       return {
         ml: clampInt(p.volume_ml, 1, 4000, 30),
-        temp: clampInt(p.temperature_c, 40, 95, 93),
+        temp: clampInt(p.temperature_c, ...L.temp, 93),
         pattern,
         agitation: pattern === "spiral" && !!(p.agitate_before || p.agitate_after),
-        pause: clampInt(p.pause_seconds, 0, 99, 0),
+        pause: clampInt(p.pause_seconds, ...L.pause, 0),
         rpm: i === 0 && pattern !== "center" ? rpm : 0,
-        flow10: clampInt(Number(p.flow_rate || 3.0) * 10, 30, 35, 30),
+        flow10: clampInt(Number(p.flow_rate || 3.0) * 10, ...L.flow10, 30),
+        codes: Array.isArray(p.codes) ? p.codes.map((c) => clampInt(c, 0, 255, 0)) : null,
       };
     });
-    return { dose, grind: clampInt(spec.grind_size, 1, 80, 55), pours };
+    return { dose, grind: clampInt(spec.grind_size, ...L.grind, 55), pours };
   }
 
   function poursPayload(r) {
     const body = [];
     for (const p of r.pours) {
-      const [pat, agit] = PATTERN_CODES[`${p.pattern}|${p.agitation}`];
+      const [pat, agit] = p.codes || PATTERN_CODES[`${p.pattern}|${p.agitation}`];
       let rest = p.ml;
       while (rest > 127) { body.push(127, p.temp, pat, agit); rest -= 127; }
       body.push(rest, p.temp, pat, agit, (256 - p.pause) & 0xff, 0x00, p.rpm, p.flow10);
@@ -118,8 +124,14 @@
   const u32At = (d, i) => (i + 4 <= d.length ? new DataView(d.buffer, d.byteOffset + i, 4).getUint32(0, true) : NaN);
   const ascii = (d) => String.fromCharCode(...d).replace(/\0+/g, "").trim();
 
+  const hex = (d) => [...d].map((b) => b.toString(16).padStart(2, "0")).join(" ");
   function handleFrame(f) {
     if (f.length < 10) return;
+    emit("frame", {
+      kind: f[1] === 0x02 && f[2] === 0x07 ? "session" : f[1] === 0x01 && f[2] === 0x01 ? "classic" : "other",
+      code: f[1] === 0x02 && f[2] === 0x07 ? f[3] : f[3] | (f[4] << 8),
+      hex: hex(f), t: performance.now(),
+    });
     // Session frames: 58 02 07 | TYPE | SUB | LEN | C1 | payload
     if (f[1] === 0x02 && f[2] === 0x07) {
       const type = f[3];
@@ -302,8 +314,49 @@
     stop: () => send(frame16(2505)),
   };
 
+  // ---------- hardware lab: find what the firmware really accepts ----------
+  // accept(): loads a recipe and waits for the "loaded" state, then cancels before anything
+  // grinds or pours, so it costs no water or beans. pour()/grind() really run the hardware.
+  const lab = {
+    LIMITS, LAB_LIMITS,
+    async accept(spec, ms = 9000) {
+      await connect();
+      const seen = { states: [], events: [] };
+      const offS = (e) => seen.states.push(e.detail.code);
+      const offE = (e) => seen.events.push(e.detail.code);
+      bus.addEventListener("state", offS); bus.addEventListener("event", offE);
+      try {
+        const r = toMachine(spec, LAB_LIMITS);
+        await write(SESSION()); await sleep(500);
+        await write(HANDSHAKE()); await sleep(1500);
+        const armed = waitForState(new Set([0x1f]), ms);
+        for (const f of loadFrames(r)) { await write(f); await sleep(400); }
+        const a = await armed;
+        return { accepted: a === 0x1f, sent: r, ...seen };
+      } finally {
+        try { await write(CANCEL()); } catch {}
+        await sleep(1200);
+        bus.removeEventListener("state", offS); bus.removeEventListener("event", offE);
+      }
+    },
+    // Manual pour with no app-side clamps (volume ≤ 150 ml, temp ≤ 100 °C).
+    async pour({ volume = 40, temp = 93, flow = 3, pattern = 1, extra = 0 } = {}) {
+      const v = clampInt(volume, 5, 150, 40), t = clampInt(temp, 20, 100, 93);
+      const fl = Math.min(6, Math.max(0.5, Number(flow) || 3));
+      await send(frame16(4506, [0x01, ...f32(fl * 10), ...f32(v * 10), ...f32(t * 10), ...u32(clampInt(extra, 0, 255, 0)), ...u32(clampInt(pattern, 0, 255, 1))]));
+    },
+    async grind({ size = 50, rpm = 100, ms = 3000 } = {}) {
+      await send(frame16(8006, [0x01, ...u32(clampInt(size, ...LAB_LIMITS.grind, 50)), ...u32(clampInt(rpm, ...LAB_LIMITS.rpm, 100))]));
+      await sleep(2000);
+      await write(frame16(3500));
+      await sleep(clampInt(ms, 500, 8000, 3000));
+      await write(frame16(3505));
+    },
+    stopAll: async () => { try { await write(frame16(4507)); } catch {} try { await write(frame16(3505)); } catch {} try { await write(CANCEL()); } catch {} },
+  };
+
   window.XBBle = {
-    supported, connect, disconnect, isConnected, brew, grinder, brewer, dripper,
+    supported, connect, disconnect, isConnected, brew, grinder, brewer, dripper, lab,
     live, STATE,
     on: (type, fn) => { const h = (e) => fn(e.detail); bus.addEventListener(type, h); return () => bus.removeEventListener(type, h); },
     _frame: frame, _frame16: frame16, _toMachine: toMachine, _loadFrames: loadFrames, _handleFrame: handleFrame,

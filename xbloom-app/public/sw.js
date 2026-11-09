@@ -1,8 +1,8 @@
 // Offline shell for the installed app. Network first so updates land straight away;
 // the cache only answers when the phone is offline. API and cross-origin calls pass through.
-const CACHE = "xbai-v23";
+const CACHE = "xbai-v24";
 const SHELL = [
-  "./", "index.html", "styles.css", "app.js", "studio.js", "recipe-engine.js",
+  "./", "index.html", "styles.css", "app.js", "studio.js", "lab.js", "recipe-engine.js",
   "xbloom-web.js", "xbloom-ble.js", "reference-recipes.json", "manifest.webmanifest",
   "icon-192.png", "icon-512.png", "logo.svg", "favicon-32.png", "apple-touch-icon.png",
 ];

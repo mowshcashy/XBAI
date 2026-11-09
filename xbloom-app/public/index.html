@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&family=Inter+Tight:wght@400;500;600&family=Instrument+Serif&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=23" />
+<link rel="stylesheet" href="styles.css?v=24" />
 <meta name="theme-color" content="#ffffff" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="logo.svg" type="image/svg+xml" />
@@ -718,6 +718,25 @@
         </section>
       </div>
 
+      <details class="mcard lab-card" id="labCard">
+        <summary><h2>مختبر حدود الجهاز</h2><span class="muted small">نكتشف وش يقدر الجهاز يسوي فعلاً فوق اللي يسمح فيه تطبيقهم</span></summary>
+        <p class="machine-note">فحص القبول يحمّل وصفات بقيم خارج المعتاد ويلغيها قبل الطحن والصب، يعني بدون ماء ولا بن (حوالي 5 دقائق). الفحوص الفعلية تصب ماء حار أو تشغّل الطاحونة فاضية، فكل وحدة تطلب تأكيد. بعد ما تخلص انسخ النتائج وأرسلها لي.</p>
+        <div class="lab-acts-row">
+          <button type="button" class="btn btn-accent" id="labAccept">ابدأ فحص القبول (بدون ماء)</button>
+          <button type="button" class="btn btn-danger" id="labStop" disabled>وقّف</button>
+        </div>
+        <p class="lab-status num" id="labStatus"></p>
+        <h3 class="lab-sub">فحوص فعلية</h3>
+        <div class="lab-real" id="labReal"></div>
+        <h3 class="lab-sub">النتائج</h3>
+        <div id="labResults"></div>
+        <p class="muted small" id="labFrames"></p>
+        <div class="lab-acts-row">
+          <button type="button" class="btn" id="labCopy">انسخ النتائج</button>
+          <button type="button" class="btn" id="labSave">حمّل ملف النتائج</button>
+        </div>
+      </details>
+
       <section class="mcard mc-log">
         <h2>سجل الجهاز</h2>
         <ol id="machineLog" class="mlog"><li class="muted">ما فيه أحداث بعد.</li></ol>
@@ -1013,10 +1032,11 @@
   </div>
 </div>
 
-<script src="recipe-engine.js?v=23"></script>
-<script src="xbloom-web.js?v=23"></script>
-<script src="xbloom-ble.js?v=23"></script>
-<script src="app.js?v=23"></script>
-<script src="studio.js?v=23"></script>
+<script src="recipe-engine.js?v=24"></script>
+<script src="xbloom-web.js?v=24"></script>
+<script src="xbloom-ble.js?v=24"></script>
+<script src="app.js?v=24"></script>
+<script src="studio.js?v=24"></script>
+<script src="lab.js?v=24"></script>
 </body>
 </html>
