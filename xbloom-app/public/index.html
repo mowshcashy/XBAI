@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&family=Inter+Tight:wght@400;500;600&family=Instrument+Serif&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=24" />
+<link rel="stylesheet" href="styles.css?v=25" />
 <meta name="theme-color" content="#ffffff" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" href="logo.svg" type="image/svg+xml" />
@@ -1005,6 +1005,10 @@
       <li>تطبيق XBloom مقفل في الجوال (الجهاز يقبل اتصال واحد)</li>
       <li>البلوتوث شغّال والجوال قريب من الجهاز</li>
     </ul>
+    <label class="rinse-opt hidden" id="rinseOpt">
+      <input type="checkbox" id="rinseToggle" />
+      <span><b>رطّب الفلتر قبل التحضير</b><small id="rinseHint">يصب 100ml ماء حار على الفلتر يشيل طعم الورق ويسخّن الدريبر، بعدها تفضّي الكوب ونكمّل الوصفة.</small></span>
+    </label>
     <div id="brewLog" class="brew-log"></div>
     <div class="row end" style="margin-top:1rem;gap:.5rem">
       <button type="button" id="brewModalClose" class="btn btn-ghost-soft hidden">إغلاق</button>
@@ -1032,11 +1036,11 @@
   </div>
 </div>
 
-<script src="recipe-engine.js?v=24"></script>
-<script src="xbloom-web.js?v=24"></script>
-<script src="xbloom-ble.js?v=24"></script>
-<script src="app.js?v=24"></script>
-<script src="studio.js?v=24"></script>
-<script src="lab.js?v=24"></script>
+<script src="recipe-engine.js?v=25"></script>
+<script src="xbloom-web.js?v=25"></script>
+<script src="xbloom-ble.js?v=25"></script>
+<script src="app.js?v=25"></script>
+<script src="studio.js?v=25"></script>
+<script src="lab.js?v=25"></script>
 </body>
 </html>

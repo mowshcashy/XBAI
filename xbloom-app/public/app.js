@@ -971,10 +971,14 @@ function brewOnMachine(spec) {
   }
 
   _pendingBrew = spec;
+  _rinseDone = null;
   const u = brewUi();
   u.log.textContent = "";
   u.log.classList.add("hidden");
   u.check.classList.remove("hidden");
+  $("#rinseOpt").classList.remove("hidden");
+  $("#rinseToggle").checked = rinsePref();
+  u.go.textContent = "اتصل وابدأ ☕";
   u.title.textContent = "جاهز للتحضير؟";
   u.subtitle.textContent = spec.name || "";
   u.icon.style.animation = "";
@@ -985,11 +989,81 @@ function brewOnMachine(spec) {
   u.modal.classList.remove("hidden");
 }
 
+// ---------- optional filter rinse before the brew ----------
+const RINSE_ML = 100;
+const rinsePref = () => { try { return localStorage.getItem("xbai.rinse") === "1"; } catch { return false; } };
+$("#rinseToggle").addEventListener("change", (e) => { try { localStorage.setItem("xbai.rinse", e.target.checked ? "1" : "0"); } catch {} });
+let _rinseDone = null; // recipe waiting for the user to empty the rinse water
+
+// Pours hot water through the empty filter, then waits for the user before the real recipe.
+async function rinseFilter(spec) {
+  const BLE = window.XBBle;
+  const u = brewUi();
+  const temp = Math.min(95, Math.max(85, Number(spec.pours?.[0]?.temperature_c) || 93));
+  u.check.classList.add("hidden");
+  $("#rinseOpt").classList.add("hidden");
+  u.go.classList.add("hidden");
+  u.log.textContent = "";
+  u.title.textContent = "جاري ترطيب الفلتر…";
+  u.subtitle.textContent = `${RINSE_ML}ml ماء على ${temp}° بدون بن`;
+  u.icon.style.animation = "brew-pulse 1.4s ease-in-out infinite";
+  let stopped = false;
+  _brewAbort = { cancel: () => { stopped = true; BLE.brewer.stop().catch(() => {}); } };
+  try {
+    brewLog("جاري الاتصال بالجهاز…");
+    await BLE.connect();
+    brewLog(`يصب ${RINSE_ML}ml على الفلتر…`);
+    let peak = 0, lastChange = performance.now(), finished = false;
+    const offW = BLE.on("weight", (d) => { const w = Math.max(d.water ?? 0, d.coffee ?? 0); if (w > peak + 0.5) { peak = w; lastChange = performance.now(); } });
+    const offE = BLE.on("event", (d) => { if (d.code === 9006 || d.code === 40511) finished = true; });
+    await BLE.brewer.start({ volume: RINSE_ML, temp, flow: 3.5, pattern: "spiral" });
+    const t0 = performance.now();
+    const minMs = (RINSE_ML / 3.5) * 1000, maxMs = minMs + 25000;
+    // Done when the machine says so, or the water stopped rising, or the time is clearly up.
+    while (!stopped) {
+      await new Promise((r) => setTimeout(r, 300));
+      const el = performance.now() - t0;
+      if (finished && el > 3000) break;
+      if (el > minMs && peak > RINSE_ML * 0.6 && performance.now() - lastChange > 2500) break;
+      if (el > maxMs) break;
+    }
+    offW(); offE();
+    if (stopped) return;
+    try { await BLE.brewer.stop(); } catch {}
+    _brewAbort = null;
+    _rinseDone = spec;
+    u.icon.style.animation = "";
+    u.title.textContent = "الفلتر جاهز";
+    u.subtitle.textContent = "فضّ ماء الترطيب من الكوب ورجّعه مكانه، وتأكد إن البن في الجهاز.";
+    brewLog("✓ خلص الترطيب");
+    u.go.textContent = "كمّل الوصفة ☕";
+    u.go.classList.remove("hidden");
+    u.go.disabled = false;
+  } catch (err) {
+    _brewAbort = null;
+    brewLog(`✗ ${err?.message || "تعذّر الترطيب"}`);
+    u.icon.style.animation = "";
+    u.title.textContent = "ما قدرت أرطّب الفلتر";
+    u.subtitle.textContent = "تقدر تكمّل الوصفة بدون ترطيب.";
+    _rinseDone = spec;
+    u.go.textContent = "كمّل الوصفة ☕";
+    u.go.classList.remove("hidden");
+  }
+}
+
 // Runs inside the "اتصل وابدأ" click so Web Bluetooth gets its user gesture.
 $("#brewModalGo").addEventListener("click", () => {
+  if (_rinseDone) {
+    const spec = _rinseDone;
+    _rinseDone = null;
+    $("#brewModal").classList.add("hidden");
+    startLiveBrew(spec);
+    return;
+  }
   const spec = _pendingBrew;
   if (!spec) return;
   _pendingBrew = null;
+  if ($("#rinseToggle").checked) { rinseFilter(spec); return; }
   $("#brewModal").classList.add("hidden");
   startLiveBrew(spec);
 });
@@ -1002,6 +1076,7 @@ async function brewViaServer(spec) {
   const u = brewUi();
   u.log.textContent = "";
   u.check.classList.add("hidden");
+  $("#rinseOpt").classList.add("hidden");
   u.go.classList.add("hidden");
   u.title.textContent = "جاري التحضير…";
   u.subtitle.textContent = "تواصل مع الجهاز عبر Bluetooth";
@@ -1049,6 +1124,7 @@ $("#brewModalCancel").addEventListener("click", () => {
   const job = _brewAbort;
   _brewAbort = null;
   _pendingBrew = null;
+  _rinseDone = null;
   if (job?.abort) job.abort();
   if (job?.cancel) job.cancel();
   $("#brewModal").classList.add("hidden");

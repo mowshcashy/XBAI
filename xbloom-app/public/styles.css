@@ -394,6 +394,11 @@ textarea{resize:vertical;font-family:inherit}
 .brew-log{background:var(--surface);border-radius:var(--radius-sm);padding:.75rem 1rem;font-size:.82rem;max-height:180px;overflow-y:auto;line-height:1.7;color:var(--text-2);white-space:pre-wrap}
 .brew-checklist{list-style:none;margin:0 0 .4rem;padding:0;display:flex;flex-direction:column}
 .brew-checklist li{display:flex;align-items:center;gap:.7rem;font-size:.92rem;padding:.65rem 0;border-bottom:1px solid var(--line)}
+.rinse-opt{display:flex;gap:.7rem;align-items:flex-start;background:var(--surface);border-radius:var(--radius-sm);padding:.75rem .9rem;margin:.2rem 0 .4rem;cursor:pointer}
+.rinse-opt input{width:20px;height:20px;margin-top:.1rem;accent-color:#000;flex-shrink:0}
+.rinse-opt span{display:flex;flex-direction:column;gap:.2rem}
+.rinse-opt b{font-weight:500;font-size:.92rem}
+.rinse-opt small{color:var(--muted);font-size:.78rem;line-height:1.55}
 .brew-checklist li::before{content:"";width:18px;height:18px;border-radius:50%;border:1.5px solid #000;flex-shrink:0}
 .ble-setup-body{display:flex;flex-direction:column;gap:.8rem;padding:.3rem 0}
 .ble-setup-step{margin:0;font-size:.9rem;display:flex;align-items:flex-start;gap:.65rem;line-height:1.55}
